@@ -1,93 +1,57 @@
 # jString
 
+A C++23 string library whose text is always valid in its encoding: UTF-8 unless you name another. It is built to be
+hard to use wrong. A mistake is a compile error where it can be, and an empty answer (`std::optional` or
+`std::expected`) where it can only be found at run time. It is never a wrong answer.
 
+Header-only: `#include "jString/v001/jstring.hpp"` from `Lin/v001/include`.
 
-## Getting started
+```cpp
+#include "jString/v001/jstring.hpp"
+using namespace jstr::literals;
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+jstr::String<> data = "This is a test"_js;                        // checked while compiling
+if (data.at(jstr::CodePointNumber{7}) == U's') { /* ... */ }      // the 7th code point, counted from 1
+auto word = data.substring(jstr::CodePointIndex{0}, jstr::CodePointCount{4});      // "This", counted from 0
+auto fixed = data.replace(jstr::CodePointNumber{1}, jstr::CodePointCount{4}, "That");  // a new String
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
+auto from_file = jstr::String<>::from(bytes);     // std::expected: valid text, or the offset of the first bad byte
+auto shown = jstr::String<>::from_lossy(bytes);   // each bad sequence made U+FFFD
 ```
-cd existing_repo
-git remote add origin https://192.168.1.20/jac3131/jString.git
-git branch -M main
-git push -uf origin main
-```
 
-## Integrate with your tools
+## The types
 
-* [Set up project integrations](https://192.168.1.20/jac3131/jString/-/settings/integrations)
+| Type | What it is |
+|---|---|
+| `String<E = Utf8>` | Owned text: a value type that copies, moves (leaving the source empty), compares and hashes |
+| `StringView<E = Utf8>` | Borrowed text, for parameters. Keep a `String`, pass a `StringView` |
+| `Literal<E = Utf8>`, `"..."_js` | Text checked while compiling, which lives as long as the program |
+| `CodePointPosition<IndexBase>` | A position counted in code points, from 0 (`CodePointIndex`, the default) or from 1 (`CodePointNumber`) |
+| `CodePointCount` | A length in code points, so that a start and a length cannot be swapped |
+| `IndexBase` | `zero_based` or `one_based`: a scoped enum, never a number |
+| `Encoding` | The concept an encoding meets: a code unit, `scan()` and `replacement()` |
 
-## Collaborate with your team
+## What does not compile
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+Each of these has a test in `Lin/v001/tests/compile_fail`. Each test also checks that the same file compiles once the
+mistake is taken out.
 
-## Test and Deploy
+- making a String from a `char*` or `std::string` without `from()`, or from a view without naming the copy
+- an invalid UTF-8 literal, or a run-time array passed as a literal
+- `s[0]`: a byte index can land inside a code point
+- ignoring `from()`'s answer
+- a plain number as a position, a base or a code point; a start and a count swapped
+- a view into a temporary String
 
-Use the built-in continuous integration in GitLab.
+## Building
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+From `Lin/v001`: `bash bsir.sh` installs what is missing, then builds and tests with this machine's pinned compilers
+(`../../../Compiler_Pins/compilers.pin.jtext`, shared with jCppGUI and jac313):
 
-***
+| Preset | What it does |
+|---|---|
+| `gcc-debug`, `clang-debug` | Build and run every test, with every warning an error (clang adds `-Weverything`) |
+| `gcc-warn` | Optimized, without the hardening flags that hide some warnings: build only |
+| `gcc-asan` | AddressSanitizer and UndefinedBehaviorSanitizer |
 
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Tested on Fedora 45 (gcc 16, clang 23) and Linux Mint 22 (gcc 15, clang 21).
