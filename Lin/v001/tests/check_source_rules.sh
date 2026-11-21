@@ -25,7 +25,7 @@ stripped() {
   done
 }
 
-mapfile -t sources < <(find include tests -type f \( -name '*.hpp' -o -name '*.cpp' \) | sort)
+mapfile -t sources < <(find include tests bench -type f \( -name '*.hpp' -o -name '*.cpp' \) | sort)
 [ "${#sources[@]}" -gt 0 ] || { echo "no sources found under $VERSION_DIR"; exit 2; }
 code="$(stripped "${sources[@]}")"
 headers="$(printf '%s\n' "$code" | grep '^include/')"

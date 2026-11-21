@@ -173,3 +173,10 @@ jstr_compile_fail(index_base_from_int "${JSTR_NO_CONVERSION}")
 jstr_compile_fail(index_base_to_int "${JSTR_NO_CONVERSION}")
 jstr_compile_fail(index_base_compared_with_int "no match|no viable|invalid operands")
 jstr_compile_fail(position_base_as_number "${JSTR_NO_CONVERSION}|template argument|narrowing|could not match|invalid")
+
+# --- Benchmark: jString against std::string. Build it with gcc-release or clang-release to read its numbers; every
+#     preset builds it and runs it once with --quick, which only proves it works. ---
+add_executable(bench_string bench/bench_string.cpp)
+target_link_libraries(bench_string PRIVATE jstring jstr_hardening jstr_warnings)
+add_test(NAME bench_string_quick COMMAND bench_string --quick)
+set_tests_properties(bench_string_quick PROPERTIES TIMEOUT 120)

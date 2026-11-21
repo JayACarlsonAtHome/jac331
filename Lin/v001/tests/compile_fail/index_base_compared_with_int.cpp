@@ -4,13 +4,15 @@
 
 using namespace jstr::literals;
 
-int main() {
+// The base is chosen at run time, from argc, which no compiler can know.
+int main(int argc, char**) {
     const jstr::String<> text = "This is a test"_js;
 #ifdef JSTR_BREAK
     const bool same = jstr::IndexBase::one_based == 1;
     static_cast<void>(same);
+    static_cast<void>(argc);
 #else
-    const jstr::IndexBase base = text.empty() ? jstr::IndexBase::zero_based : jstr::IndexBase::one_based;
+    const jstr::IndexBase base = argc > 1 ? jstr::IndexBase::zero_based : jstr::IndexBase::one_based;
     const bool same = base == jstr::IndexBase::one_based;
     static_cast<void>(same);
 #endif

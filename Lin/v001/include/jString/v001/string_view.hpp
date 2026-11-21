@@ -23,7 +23,10 @@
 
 namespace jstr::inline v001 {
 
-template <Encoding E>
+// How many units a String holds inside itself, its terminating zero among them, before its text goes to the heap.
+inline constexpr std::size_t default_inline_units = 64;
+
+template <Encoding E = Utf8, std::size_t InlineUnits = default_inline_units>
 class String;
 template <Encoding E>
 class Literal;
@@ -102,9 +105,10 @@ public:
 
         constexpr iterator() noexcept = default;
 
-        [[nodiscard]] constexpr char32_t operator*() const noexcept { return E::scan(rest_).code_point; }
+        // Valid text: decoded with no checking, and its first unit says how long it is.
+        [[nodiscard]] constexpr char32_t operator*() const noexcept { return E::decode(rest_); }
         constexpr iterator& operator++() noexcept {
-            rest_.remove_prefix(E::scan(rest_).length);
+            rest_.remove_prefix(E::length_of(rest_.front()));
             return *this;
         }
         constexpr iterator operator++(int) noexcept {
@@ -158,17 +162,11 @@ public:
     [[nodiscard]] constexpr bool empty() const noexcept { return units_.empty(); }
 
     [[nodiscard]] constexpr CodePoints<E> code_points() const noexcept { return CodePoints<E>{units_}; }
-    [[nodiscard]] constexpr std::size_t count_code_points() const noexcept {
-        std::size_t count = 0;
-        for (const char32_t code_point : code_points()) {
-            static_cast<void>(code_point);
-            ++count;
-        }
-        return count;
-    }
+    [[nodiscard]] constexpr std::size_t count_code_points() const noexcept { return code_point_count<E>(units_); }
 
-    // The one code point at a position, as text, or nothing when the text is shorter. Found by walking from the start,
-    // so its cost grows with the position: to visit every code point, walk code_points() instead.
+    // The one code point at a position, as text, or nothing when the text is shorter. A view keeps no table of where
+    // its code points start, so this counts from the start, 16 units at a step; a String with its text on the heap
+    // keeps one, and answers at once.
     template <IndexBase Base>
     [[nodiscard]] constexpr std::optional<StringView> at(CodePointPosition<Base> position) const noexcept {
         return substring(position, CodePointCount{1});
@@ -197,7 +195,9 @@ public:
     [[nodiscard]] constexpr std::optional<String<E>> replace(CodePointPosition<Base> start, CodePointCount count, StringView with) const {
         const auto span = unit_span(start, count.value);
         if (!span) return std::nullopt;
-        String<E> made{StringView{units_.substr(0, span->first)}};
+        String<E> made;
+        made.reserve_units(span->first + with.size_units() + (units_.size() - span->second));
+        made += StringView{units_.substr(0, span->first)};
         made += with;
         made += StringView{units_.substr(span->second)};
         return made;
@@ -235,7 +235,8 @@ public:
     }
 
 private:
-    friend String<E>;
+    template <Encoding, std::size_t>
+    friend class String;
     friend Literal<E>;
     // Only for units already known to be valid.
     constexpr explicit StringView(units_view units) noexcept : units_{units} {}
@@ -246,17 +247,11 @@ private:
     [[nodiscard]] constexpr std::optional<std::pair<std::size_t, std::size_t>> unit_span(CodePointPosition<Base> start, std::size_t count) const noexcept {
         const auto skipped = start.skipped();
         if (!skipped) return std::nullopt;
-        std::size_t offset = 0;
-        for (std::size_t seen = 0; seen < *skipped; ++seen) {
-            if (offset >= units_.size()) return std::nullopt;
-            offset += E::scan(units_.substr(offset)).length;
-        }
-        const std::size_t begin = offset;
-        for (std::size_t taken = 0; taken < count; ++taken) {
-            if (offset >= units_.size()) return std::nullopt;
-            offset += E::scan(units_.substr(offset)).length;
-        }
-        return std::pair{begin, offset};
+        const auto begin = offset_of<E>(units_, *skipped);
+        if (!begin) return std::nullopt;
+        const auto length = offset_of<E>(units_.substr(*begin), count);
+        if (!length) return std::nullopt;
+        return std::pair{*begin, *begin + *length};
     }
     units_view units_{};
 };

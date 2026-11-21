@@ -1,7 +1,11 @@
 // File: tests/test_utf8.cpp
 // Purpose: UTF-8 scanning at run time: every length of valid sequence and its edges, and every kind of bad one, with
 //          the length the Unicode Standard gives its maximal subpart. test_constexpr.cpp proves the same at compile time.
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <span>
 #include <string_view>
 
 #include "check.hpp"
@@ -16,6 +20,32 @@ using jstr::Utf8;
 constexpr char32_t bad = jstr::replacement_character;
 
 [[nodiscard]] Scan scan(std::string_view units) { return Utf8::scan(units); }
+
+// A code point's UTF-8, written out by the rule in the Unicode Standard's table 3-6, into four bytes: how many it took.
+[[nodiscard]] std::size_t encode(char32_t code_point, std::span<char, 4> out) {
+    const auto unit = [](std::uint32_t bits) { return static_cast<char>(static_cast<unsigned char>(bits)); };
+    const std::uint32_t c = code_point;
+    if (c < 0x80U) {
+        out[0] = unit(c);
+        return 1;
+    }
+    if (c < 0x800U) {
+        out[0] = unit(0xC0U | (c >> 6U));
+        out[1] = unit(0x80U | (c & 0x3FU));
+        return 2;
+    }
+    if (c < 0x10000U) {
+        out[0] = unit(0xE0U | (c >> 12U));
+        out[1] = unit(0x80U | ((c >> 6U) & 0x3FU));
+        out[2] = unit(0x80U | (c & 0x3FU));
+        return 3;
+    }
+    out[0] = unit(0xF0U | (c >> 18U));
+    out[1] = unit(0x80U | ((c >> 12U) & 0x3FU));
+    out[2] = unit(0x80U | ((c >> 6U) & 0x3FU));
+    out[3] = unit(0x80U | (c & 0x3FU));
+    return 4;
+}
 
 }  // namespace
 
@@ -68,6 +98,21 @@ int main() {
     check(jstr::first_invalid<Utf8>("ab\x80" "cd") == EncodingError{2}, "found at its offset");
     check(jstr::first_invalid<Utf8>("\xC3\xA9\xC3") == EncodingError{2}, "found after a valid two-byte sequence");
     check(jstr::first_invalid<Utf8>("\xED\xA0\x80\x41") == EncodingError{0}, "a surrogate at the start");
+
+    // decode() and length_of(), which trust the text, against scan(), which checks it: every code point there is.
+    std::size_t disagree = 0;
+    for (std::uint32_t c = 0; c <= 0x10FFFFU; ++c) {
+        if (c >= 0xD800U && c <= 0xDFFFU) continue;  // surrogates are not code points UTF-8 may hold
+        std::array<char, 4> bytes{};
+        const std::size_t length = encode(static_cast<char32_t>(c), bytes);
+        const std::string_view units{std::span{bytes}.first(length)};
+        const Scan checked = scan(units);
+        if (!checked.valid || checked.length != length || checked.code_point != static_cast<char32_t>(c) ||
+            Utf8::decode(units) != static_cast<char32_t>(c) || Utf8::length_of(units.front()) != length) {
+            ++disagree;
+        }
+    }
+    check(disagree == 0, "decode, length_of and scan agree on all 1,112,064 code points");
 
     // U+FFFD's own bytes are valid UTF-8, and say U+FFFD.
     check(scan(Utf8::replacement()) == Scan{bad, 3, true}, "the replacement is U+FFFD, valid");

@@ -48,6 +48,20 @@ static_assert([] {
     const String<> to{std::move(from)};
     return from.empty() && to == "x";
 }());
+// Text moving from inside a String to the heap, and its table, made and used while compiling.
+static_assert([] {
+    jstr::String<Utf8, 4> text = "a\u00e9"_js;
+    text += "b\u65e5c";
+    text += text;
+    return text == "a\u00e9b\u65e5ca\u00e9b\u65e5c" && text.count_code_points() == 10 && text.at(jstr::CodePointIndex{8}) == U'\u65e5' &&
+           text.substring(jstr::CodePointNumber{2}, jstr::CodePointCount{3}) == StringView<>{"\u00e9b\u65e5"};
+}());
+static_assert([] {
+    jstr::String<Utf8, 4> from = "\u00e9\u00e9\u00e9"_js;
+    const jstr::String<Utf8, 4> to{std::move(from)};
+    return from.empty() && from.count_code_points() == 0 && to.at(jstr::CodePointIndex{2}) == U'\u00e9';
+}());
+static_assert(StringView<>{"0123456789abcdef0123456789\u00e9"}.at(jstr::CodePointIndex{26}) == U'\u00e9');
 static_assert(String<>::from("ok\xFF").error() == EncodingError{2});
 static_assert(String<>::from_lossy("a\xF0\x80\x80" "b") == "a���" "b");
 static_assert(("x"_js.view() + "y") + String<>{"z"_js} == "xyz");
