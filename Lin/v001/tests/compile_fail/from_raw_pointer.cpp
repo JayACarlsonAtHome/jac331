@@ -7,9 +7,9 @@
 int main(int count, char**) {
     const char* raw = count > 1 ? "two" : "one";
 #ifdef JSTR_BREAK
-    const jstr::String<> text{raw};
+    const jstr::String<jstr::Type::UTF8Full> text{raw};
 #else
-    const auto text = jstr::String<>::from(std::string_view{raw});
+    const auto text = jstr::String<jstr::Type::UTF8Full>::from(std::string_view{raw});
 #endif
     static_cast<void>(text);
 }

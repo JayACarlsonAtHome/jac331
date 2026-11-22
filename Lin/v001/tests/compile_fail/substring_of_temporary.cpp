@@ -5,9 +5,9 @@
 using namespace jstr::literals;
 
 int main() {
-    const jstr::String<> text = "This is a test"_js;
+    const jstr::String<jstr::Type::UTF8Full> text = "This is a test"_js;
 #ifdef JSTR_BREAK
-    const auto piece = jstr::String<>{text}.substring(jstr::CodePointIndex{0});
+    const auto piece = jstr::String<jstr::Type::UTF8Full>{text}.substring(jstr::CodePointIndex{0});
     static_cast<void>(piece);
 #else
     const auto piece = text.substring(jstr::CodePointIndex{0});

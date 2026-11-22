@@ -1,11 +1,9 @@
 // File: include/jString/v001/encoding.hpp
-// Purpose: What an encoding is to jString (the Encoding concept), and the one encoding built so far: UTF-8.
-//          An encoding answers one question, scan(): what is the first code point of these units, and how many
-//          units does it take? Checking and repairing text that comes in are built on that answer.
-//
-//          jString keeps every code point in a cell of the same size, cell_units units (4 for UTF-8): the code point's
-//          own units first, then zeros. Code point n is cell n, found by multiplying, never by walking the text. A cell
-//          is bytes in order, not a number, so it reads the same on every machine, whatever its byte order.
+// Purpose: What an encoding is to jString (the Encoding concept), and the four it knows: ASCII, UTF-8, UTF-16 and
+//          UTF-32. An encoding answers two questions. scan(): what is the first code point of these units, and how
+//          many units does it take? encode(): what are a code point's units? Checking, repairing and converting text
+//          are built on those answers. How a String lays the units out (packed, or a code point to a 4-byte cell) is
+//          type.hpp's, not the encoding's.
 #pragma once
 
 #include <algorithm>
@@ -42,30 +40,65 @@ struct EncodingError {
 
 inline constexpr char32_t replacement_character = U'�';
 
-// An encoding: its code unit, how many units a cell holds, scan() over a non-empty run of units, the units of U+FFFD,
-// and three questions about one unit and one about a cell:
+// An encoding: its code unit, the most units one code point takes (max_units), scan() over a non-empty run of units,
+// the units of its replacement for a bad sequence, and these about one unit, one code point, or valid units:
 //   whole_alone(u):       u by itself is a whole, valid code point (in UTF-8: ASCII), so 16 in a row are checked at once
 //   starts_code_point(u): in valid text, a code point starts at u (in UTF-8: anything but a continuation byte)
 //   length_of(u):         in valid text, how many units the code point that starts at u takes
-//   decode(cell):         the code point in a cell of valid text, with no checking: scan() checked it on the way in
+//   decode(valid):        the code point valid starts with, with no checking: scan() checked it on the way in
+//   encode(c, out):       code point c's units, written into out: how many
 template <class E>
-concept Encoding = std::is_trivially_copyable_v<typename E::unit> && E::cell_units >= 1 &&
-                   requires(std::basic_string_view<typename E::unit> units, std::span<const typename E::unit> cell, typename E::unit unit) {
-                       { E::cell_units } -> std::convertible_to<std::size_t>;
+concept Encoding = std::is_trivially_copyable_v<typename E::unit> && E::max_units >= 1 &&
+                   requires(std::basic_string_view<typename E::unit> units, std::span<const typename E::unit> valid, typename E::unit unit,
+                            std::span<typename E::unit, E::max_units> out) {
                        { E::scan(units) } noexcept -> std::same_as<Scan>;
                        { E::replacement() } noexcept -> std::same_as<std::basic_string_view<typename E::unit>>;
                        { E::whole_alone(unit) } noexcept -> std::same_as<bool>;
                        { E::starts_code_point(unit) } noexcept -> std::same_as<bool>;
                        { E::length_of(unit) } noexcept -> std::same_as<std::size_t>;
-                       { E::decode(cell) } noexcept -> std::same_as<char32_t>;
+                       { E::decode(valid) } noexcept -> std::same_as<char32_t>;
+                       { E::encode(char32_t{}, out) } noexcept -> std::same_as<std::size_t>;
                    };
+
+// Whether a code point is one any Unicode encoding may hold: at most U+10FFFF, and not a surrogate (U+D800 to U+DFFF,
+// which exist only to make UTF-16's pairs).
+[[nodiscard]] constexpr bool is_scalar_value(char32_t code_point) noexcept {
+    return code_point <= U'\U0010FFFF' && (code_point < U'\xD800' || code_point > U'\xDFFF');
+}
+
+// ASCII: the code points below U+0080, a byte each. Text from outside is ASCII only when every byte is below 80; it
+// is never guessed at. A code point it cannot hold is written as '?', which is ASCII's own sign for a character lost.
+struct Ascii {
+    using unit = char;
+    static constexpr std::size_t max_units = 1;
+
+    // units must not be empty.
+    [[nodiscard]] static constexpr Scan scan(std::string_view units) noexcept {
+        const auto lead = static_cast<unsigned char>(units.front());
+        if (lead < 0x80U) return Scan{static_cast<char32_t>(lead), 1, true};
+        return Scan{replacement_character, 1, false};
+    }
+    [[nodiscard]] static constexpr std::string_view replacement() noexcept { return "?"; }
+    [[nodiscard]] static constexpr bool whole_alone(char unit) noexcept { return static_cast<unsigned char>(unit) < 0x80U; }
+    [[nodiscard]] static constexpr bool starts_code_point(char) noexcept { return true; }
+    [[nodiscard]] static constexpr std::size_t length_of(char) noexcept { return 1; }
+    [[nodiscard]] static constexpr char32_t decode(std::span<const char> valid) noexcept {
+        return static_cast<char32_t>(static_cast<unsigned char>(valid.front()));
+    }
+    // Below U+0080 the code point; anything else '?'.
+    [[nodiscard]] static constexpr std::size_t encode(char32_t code_point, std::span<char, 1> out) noexcept {
+        out[0] = code_point < U'\x80' ? static_cast<char>(code_point) : '?';
+        return 1;
+    }
+};
 
 // UTF-8, held in char so that it goes to C libraries, files and std::cout unchanged. Valid means well-formed as the
 // Unicode Standard's table 3-7 says: no overlong forms, no surrogates (U+D800 to U+DFFF), nothing past U+10FFFF.
 struct Utf8 {
     using unit = char;
-    // The longest UTF-8 sequence: every code point fits a cell of 4 bytes.
-    static constexpr std::size_t cell_units = 4;
+    static constexpr std::size_t max_units = 4;
+    // Type::UTF8Full keeps each code point in a cell this long: the longest UTF-8 sequence, so every code point fits.
+    static constexpr std::size_t cell_units = max_units;
 
     // units must not be empty.
     [[nodiscard]] static constexpr Scan scan(std::string_view units) noexcept {
@@ -126,11 +159,117 @@ struct Utf8 {
         return static_cast<char32_t>(value);
     }
 
+    // The rule in the Unicode Standard's table 3-6. code_point must be a scalar value.
+    [[nodiscard]] static constexpr std::size_t encode(char32_t code_point, std::span<char, 4> out) noexcept {
+        const std::uint32_t c = code_point;
+        if (c < 0x80U) {
+            out[0] = unit_of(c);
+            return 1;
+        }
+        if (c < 0x800U) {
+            out[0] = unit_of(0xC0U | (c >> 6U));
+            out[1] = unit_of(0x80U | (c & 0x3FU));
+            return 2;
+        }
+        if (c < 0x10000U) {
+            out[0] = unit_of(0xE0U | (c >> 12U));
+            out[1] = unit_of(0x80U | ((c >> 6U) & 0x3FU));
+            out[2] = unit_of(0x80U | (c & 0x3FU));
+            return 3;
+        }
+        out[0] = unit_of(0xF0U | (c >> 18U));
+        out[1] = unit_of(0x80U | ((c >> 12U) & 0x3FU));
+        out[2] = unit_of(0x80U | ((c >> 6U) & 0x3FU));
+        out[3] = unit_of(0x80U | (c & 0x3FU));
+        return 4;
+    }
+
 private:
     [[nodiscard]] static constexpr std::uint32_t byte(char unit) noexcept { return static_cast<unsigned char>(unit); }
+    [[nodiscard]] static constexpr char unit_of(std::uint32_t bits) noexcept { return static_cast<char>(static_cast<unsigned char>(bits)); }
 };
 
+// UTF-16, held in char16_t in this machine's byte order. A code point above U+FFFF is a pair: a high surrogate
+// (D800 to DBFF), then a low one (DC00 to DFFF). A surrogate anywhere else is a bad sequence one unit long.
+struct Utf16 {
+    using unit = char16_t;
+    static constexpr std::size_t max_units = 2;
+
+    // units must not be empty.
+    [[nodiscard]] static constexpr Scan scan(std::u16string_view units) noexcept {
+        const char16_t lead = units.front();
+        if (!is_surrogate(lead)) return Scan{lead, 1, true};
+        if (is_high(lead) && units.size() >= 2 && is_low(units[1])) return Scan{pair(lead, units[1]), 2, true};
+        return Scan{replacement_character, 1, false};
+    }
+    [[nodiscard]] static constexpr std::u16string_view replacement() noexcept { return u"\uFFFD"; }
+    [[nodiscard]] static constexpr bool whole_alone(char16_t unit) noexcept { return !is_surrogate(unit); }
+    [[nodiscard]] static constexpr bool starts_code_point(char16_t unit) noexcept { return !is_low(unit); }
+    [[nodiscard]] static constexpr std::size_t length_of(char16_t lead) noexcept { return is_high(lead) ? 2 : 1; }
+    [[nodiscard]] static constexpr char32_t decode(std::span<const char16_t> valid) noexcept {
+        const char16_t lead = valid.front();
+        return is_high(lead) ? pair(lead, valid[1]) : char32_t{lead};
+    }
+    // code_point must be a scalar value.
+    [[nodiscard]] static constexpr std::size_t encode(char32_t code_point, std::span<char16_t, 2> out) noexcept {
+        const std::uint32_t c = code_point;
+        if (c < 0x10000U) {
+            out[0] = static_cast<char16_t>(c);
+            return 1;
+        }
+        const std::uint32_t above = c - 0x10000U;
+        out[0] = static_cast<char16_t>(0xD800U + (above >> 10U));
+        out[1] = static_cast<char16_t>(0xDC00U + (above & 0x3FFU));
+        return 2;
+    }
+
+    // Where a unit sorts so that units compare in code point order: a pair stands for a code point above every unit
+    // from E000 to FFFF, so surrogates are moved above them, and E000 to FFFF down into the room.
+    [[nodiscard]] static constexpr std::uint32_t rank(char16_t unit) noexcept {
+        const std::uint32_t u = unit;
+        if (u >= 0xE000U) return u - 0x800U;
+        if (u >= 0xD800U) return u + 0x2000U;
+        return u;
+    }
+
+private:
+    [[nodiscard]] static constexpr bool is_surrogate(char16_t unit) noexcept { return unit >= u'\xD800' && unit <= u'\xDFFF'; }
+    [[nodiscard]] static constexpr bool is_high(char16_t unit) noexcept { return unit >= u'\xD800' && unit <= u'\xDBFF'; }
+    [[nodiscard]] static constexpr bool is_low(char16_t unit) noexcept { return unit >= u'\xDC00' && unit <= u'\xDFFF'; }
+    [[nodiscard]] static constexpr char32_t pair(char16_t high, char16_t low) noexcept {
+        const std::uint32_t h = high;
+        const std::uint32_t l = low;
+        return static_cast<char32_t>(0x10000U + ((h - 0xD800U) << 10U) + (l - 0xDC00U));
+    }
+};
+
+// UTF-32, held in char32_t in this machine's byte order: one unit, the code point itself.
+struct Utf32 {
+    using unit = char32_t;
+    static constexpr std::size_t max_units = 1;
+
+    // units must not be empty.
+    [[nodiscard]] static constexpr Scan scan(std::u32string_view units) noexcept {
+        const char32_t unit = units.front();
+        if (is_scalar_value(unit)) return Scan{unit, 1, true};
+        return Scan{replacement_character, 1, false};
+    }
+    [[nodiscard]] static constexpr std::u32string_view replacement() noexcept { return U"\uFFFD"; }
+    [[nodiscard]] static constexpr bool whole_alone(char32_t unit) noexcept { return is_scalar_value(unit); }
+    [[nodiscard]] static constexpr bool starts_code_point(char32_t) noexcept { return true; }
+    [[nodiscard]] static constexpr std::size_t length_of(char32_t) noexcept { return 1; }
+    [[nodiscard]] static constexpr char32_t decode(std::span<const char32_t> valid) noexcept { return valid.front(); }
+    // code_point must be a scalar value.
+    [[nodiscard]] static constexpr std::size_t encode(char32_t code_point, std::span<char32_t, 1> out) noexcept {
+        out[0] = code_point;
+        return 1;
+    }
+};
+
+static_assert(Encoding<Ascii>);
 static_assert(Encoding<Utf8>);
+static_assert(Encoding<Utf16>);
+static_assert(Encoding<Utf32>);
 static_assert(sizeof(Scan) == 8);
 
 namespace detail {

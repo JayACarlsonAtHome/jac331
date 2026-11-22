@@ -6,9 +6,9 @@ using namespace jstr::literals;
 
 int main() {
 #ifdef JSTR_BREAK
-    const jstr::String<> text = "bad \xED\xA0\x80"_js;
+    const jstr::String<jstr::Type::UTF8Full> text = "bad \xED\xA0\x80"_js;
 #else
-    const jstr::String<> text = "good \xED\x9F\xBF"_js;
+    const jstr::String<jstr::Type::UTF8Full> text = "good \xED\x9F\xBF"_js;
 #endif
     static_cast<void>(text);
 }

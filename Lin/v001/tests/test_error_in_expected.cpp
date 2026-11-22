@@ -18,7 +18,7 @@ using namespace jstr::literals;
 
 struct Error {
     int code;
-    jstr::String<> message;
+    jstr::String<jstr::Type::UTF8Full> message;
 };
 
 class Engine {

@@ -5,7 +5,7 @@
 using namespace jstr::literals;
 
 int main() {
-    const jstr::String<> text = "\xC3\xA9t\xC3\xA9"_js;
+    const jstr::String<jstr::Type::UTF8Full> text = "\xC3\xA9t\xC3\xA9"_js;
 #ifdef JSTR_BREAK
     const auto first = text[0];
 #else

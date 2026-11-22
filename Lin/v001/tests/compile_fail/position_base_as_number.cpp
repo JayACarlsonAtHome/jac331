@@ -5,7 +5,7 @@
 using namespace jstr::literals;
 
 int main() {
-    const jstr::String<> text = "This is a test"_js;
+    const jstr::String<jstr::Type::UTF8Full> text = "This is a test"_js;
 #ifdef JSTR_BREAK
     const jstr::CodePointPosition<1> where{7};
     static_cast<void>(where);

@@ -127,7 +127,9 @@ function(jstr_test name)
 endfunction()
 
 jstr_test(test_utf8)
+jstr_test(test_codecs)
 jstr_test(test_string)
+jstr_test(test_convert)
 # Everything again inside static_assert: a constant evaluation stops at any undefined behaviour.
 jstr_test(test_constexpr)
 # The shape that set off g++ 15's -Wdangling-pointer in jCppGUI (an Error holding text, inside a std::expected,
@@ -173,6 +175,11 @@ jstr_compile_fail(index_base_from_int "${JSTR_NO_CONVERSION}")
 jstr_compile_fail(index_base_to_int "${JSTR_NO_CONVERSION}")
 jstr_compile_fail(index_base_compared_with_int "no match|no viable|invalid operands")
 jstr_compile_fail(position_base_as_number "${JSTR_NO_CONVERSION}|template argument|narrowing|could not match|invalid")
+jstr_compile_fail(type_required "too few template arguments|wrong number of template arguments|template argument")
+jstr_compile_fail(mixed_types "no match|no viable|invalid operands")
+jstr_compile_fail(wide_literal_as_ascii "${JSTR_NO_CONVERSION}|constraints? not satisfied|not satisfied")
+jstr_compile_fail(std_view_of_text "${JSTR_NO_CONVERSION}")
+jstr_compile_fail(ascii_conversion_unchecked "${JSTR_NO_CONVERSION}")
 
 # --- Benchmark: jString against std::string. Build it with gcc-release or clang-release to read its numbers; every
 #     preset builds it and runs it once with --quick, which only proves it works. ---

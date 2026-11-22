@@ -7,9 +7,9 @@ using namespace jstr::literals;
 
 int main() {
 #ifdef JSTR_BREAK
-    const jstr::StringView<> view = "text";
+    const jstr::StringView<jstr::Type::UTF8Full> view = "text";
 #else
-    const jstr::StringView<> view = "text"_js;
+    const jstr::StringView<jstr::Type::UTF8Full> view = "text"_js;
 #endif
     static_cast<void>(view);
 }

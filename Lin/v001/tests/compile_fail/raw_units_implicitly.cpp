@@ -9,7 +9,7 @@
 using namespace jstr::literals;
 
 int main() {
-    const jstr::String<> text = "text"_js;
+    const jstr::String<jstr::Type::UTF8Full> text = "text"_js;
 #ifdef JSTR_BREAK
     const std::string_view bytes = text;
 #else

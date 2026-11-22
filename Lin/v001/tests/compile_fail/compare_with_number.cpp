@@ -5,7 +5,7 @@
 using namespace jstr::literals;
 
 int main() {
-    const jstr::StringView<> letter = "s"_js;
+    const jstr::StringView<jstr::Type::UTF8Full> letter = "s"_js;
 #ifdef JSTR_BREAK
     const bool same = letter == 115;
 #else

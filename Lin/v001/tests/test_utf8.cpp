@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 
 #include "check.hpp"
@@ -45,6 +46,13 @@ constexpr char32_t bad = jstr::replacement_character;
     out[2] = unit(0x80U | ((c >> 6U) & 0x3FU));
     out[3] = unit(0x80U | (c & 0x3FU));
     return 4;
+}
+
+// The same code point as jString's own encode writes it.
+[[nodiscard]] std::string encoded_by_jstr(std::uint32_t code_point) {
+    std::array<char, 4> bytes{};
+    const std::size_t length = Utf8::encode(static_cast<char32_t>(code_point), bytes);
+    return std::string{bytes.data(), length};
 }
 
 }  // namespace
@@ -108,11 +116,11 @@ int main() {
         const std::string_view units{std::span{bytes}.first(length)};
         const Scan checked = scan(units);
         if (!checked.valid || checked.length != length || checked.code_point != static_cast<char32_t>(c) ||
-            Utf8::decode(units) != static_cast<char32_t>(c) || Utf8::length_of(units.front()) != length) {
+            Utf8::decode(units) != static_cast<char32_t>(c) || Utf8::length_of(units.front()) != length || encoded_by_jstr(c) != units) {
             ++disagree;
         }
     }
-    check(disagree == 0, "decode, length_of and scan agree on all 1,112,064 code points");
+    check(disagree == 0, "decode, length_of, scan and encode agree on all 1,112,064 code points");
 
     // U+FFFD's own bytes are valid UTF-8, and say U+FFFD.
     check(scan(Utf8::replacement()) == Scan{bad, 3, true}, "the replacement is U+FFFD, valid");

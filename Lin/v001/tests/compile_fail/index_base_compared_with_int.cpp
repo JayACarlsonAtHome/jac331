@@ -6,7 +6,7 @@ using namespace jstr::literals;
 
 // The base is chosen at run time, from argc, which no compiler can know.
 int main(int argc, char**) {
-    const jstr::String<> text = "This is a test"_js;
+    const jstr::String<jstr::Type::UTF8Full> text = "This is a test"_js;
 #ifdef JSTR_BREAK
     const bool same = jstr::IndexBase::one_based == 1;
     static_cast<void>(same);

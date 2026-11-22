@@ -7,9 +7,9 @@
 int main(int count, char**) {
     const std::string raw(static_cast<std::size_t>(count), 'a');
 #ifdef JSTR_BREAK
-    const jstr::String<> text = raw;
+    const jstr::String<jstr::Type::UTF8Full> text = raw;
 #else
-    const auto text = jstr::String<>::from(raw);
+    const auto text = jstr::String<jstr::Type::UTF8Full>::from(raw);
 #endif
     static_cast<void>(text);
 }

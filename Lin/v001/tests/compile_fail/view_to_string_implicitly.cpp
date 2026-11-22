@@ -6,11 +6,11 @@ using namespace jstr::literals;
 
 namespace {
 
-[[nodiscard]] jstr::String<> keep(jstr::StringView<> view) {
+[[nodiscard]] jstr::String<jstr::Type::UTF8Full> keep(jstr::StringView<jstr::Type::UTF8Full> view) {
 #ifdef JSTR_BREAK
     return view;
 #else
-    return jstr::String<>{view};
+    return jstr::String<jstr::Type::UTF8Full>{view};
 #endif
 }
 

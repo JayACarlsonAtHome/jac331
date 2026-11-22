@@ -13,9 +13,12 @@ public:
         ++checks_;
         if (!condition) {
             ++failures_;
-            std::cerr << "FAILED " << where.file_name() << ':' << where.line() << ": " << what << '\n';
+            std::cerr << "FAILED " << where.file_name() << ':' << where.line() << ": " << context_ << what << '\n';
         }
     }
+
+    // Said before each failure from here on: which of several runs of the same checks failed.
+    void context(const char* name) { context_ = name; }
 
     [[nodiscard]] int finish() const {
         std::cout << checks_ << " checks, " << failures_ << " failures\n";
@@ -23,6 +26,7 @@ public:
     }
 
 private:
+    const char* context_{""};
     int checks_{};
     int failures_{};
 };

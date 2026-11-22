@@ -7,7 +7,7 @@
 using namespace jstr::literals;
 
 int main() {
-    const jstr::StringView<> text = "caf\xC3\xA9"_js;
+    const jstr::StringView<jstr::Type::UTF8Full> text = "caf\xC3\xA9"_js;
 #ifdef JSTR_BREAK
     const auto bytes = text.units();
 #else

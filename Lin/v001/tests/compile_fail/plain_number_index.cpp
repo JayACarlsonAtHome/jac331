@@ -6,7 +6,7 @@
 using namespace jstr::literals;
 
 int main() {
-    const jstr::String<> text = "Th\xC3\xA9 is a test"_js;
+    const jstr::String<jstr::Type::UTF8Full> text = "Th\xC3\xA9 is a test"_js;
 #ifdef JSTR_BREAK
     const auto found = text.at(5);
 #else
