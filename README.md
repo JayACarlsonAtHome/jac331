@@ -20,7 +20,7 @@ using namespace jstr::literals;
 jstr::String<> data = "This is a test"_js;                        // checked while compiling
 if (data.at(jstr::CodePointNumber{7}) == U's') { /* ... */ }      // the 7th code point, counted from 1
 auto word = data.substring(jstr::CodePointIndex{0}, jstr::CodePointCount{4});      // "This", counted from 0
-auto fixed = data.replace(jstr::CodePointNumber{1}, jstr::CodePointCount{4}, "That");  // a new String
+auto fixed = data.replace(jstr::CodePointNumber{1}, jstr::CodePointCount{4}, "That");  // a new jString
 
 auto from_file = jstr::String<>::from(bytes);     // std::expected: valid text, or the offset of the first bad byte
 auto shown = jstr::String<>::from_lossy(bytes);   // each bad sequence made U+FFFD
@@ -28,7 +28,7 @@ auto shown = jstr::String<>::from_lossy(bytes);   // each bad sequence made U+FF
 
 ## Goals
 
-- **Text is always valid.** A String cannot hold a broken UTF-8 sequence, so no code that reads one has to check.
+- **Text is always valid.** A jString cannot hold a broken UTF-8 sequence, so no code that reads one has to check.
 - **Hard to use wrong.** A mistake is a compile error where it can be, an empty answer where it can only be found at
   run time, and never a wrong answer.
 - **Count what people mean.** Positions and lengths are in code points, not bytes, and say which base they count from.
@@ -44,19 +44,19 @@ auto shown = jstr::String<>::from_lossy(bytes);   // each bad sequence made U+FF
 
 | Decision | Why |
 |---|---|
-| A template over the encoding (`String<E = Utf8>`), with only UTF-8 built | Room for another encoding later, without a second class. The `Encoding` concept says what one must give |
+| A template over the encoding (`jstr::String<E = Utf8>`), with only UTF-8 built | Room for another encoding later, without a second class. The `Encoding` concept says what one must give |
 | Everything stored as UTF-8 | One form for every language. The table that makes `at()` fast is an index into the UTF-8, never a second copy in UTF-32 |
-| Text under 64 units held inside the String (one cache line), longer text in a `std::vector` | Most text is short and needs no heap. 64 was measured against 80; `alignas(64)` was tried and gained nothing |
-| The text's place worked out each time, never kept as a pointer | Nothing in a String points into the String, so a move cannot leave a pointer into the old one. `std::string`'s small-string buffer set off g++ 15's `-Wdangling-pointer`; this cannot |
+| Text under 64 units held inside the jString (one cache line), longer text in a `std::vector` | Most text is short and needs no heap. 64 was measured against 80; `alignas(64)` was tried and gained nothing |
+| The text's place worked out each time, never kept as a pointer | Nothing in a jString points into the jString itself, so a move cannot leave a pointer into the old one. `std::string`'s small-string buffer set off g++ 15's `-Wdangling-pointer`; this cannot |
 | The count of code points kept, and kept up to date on every change | Counting is then free (0.09 ns, against 501 ns to count 4 KiB). Keeping it costs a count of only the text that was added |
 | A table of where each code point starts, 4 bytes each: only for text on the heap that is not all ASCII, and at most 4 GiB | `at(n)` and `substring()` go straight to their place. ASCII needs no table (code point n is byte n), and short text is counted 16 bytes at a step |
 | The table built byte by byte, 16 ASCII bytes at a step | A one-pass build sized from the count was tried and was slower (clang: 4.0 us to 5.5 us for 4 KiB) |
 | No `operator[]`; `at()` gives the code point as an `optional` view | A byte index can land in the middle of a code point. Past the end is an empty answer, not a crash or a guess |
 | `CodePointIndex` (from 0) and `CodePointNumber` (from 1) are types, and `CodePointCount` is another | A plain number, a base, or a start and a count swapped do not compile |
 | Ways in: a checked literal, a named copy of a view, `from()` (an `expected`) or `from_lossy()` | Every copy is seen, and text from outside is checked once, where it comes in |
-| Views from a temporary String do not compile | A view into text that is about to be destroyed is a dangling pointer by another name |
+| Views from a temporary jString do not compile | A view into text that is about to be destroyed is a dangling pointer by another name |
 | `c_str()` gives nothing when the text holds a zero | C would stop at the zero and quietly lose the rest |
-| A String moved from is empty | The standard says only "valid but unspecified" for `std::string`; here it is a promise |
+| A jString moved from is empty | The standard says only "valid but unspecified" for `std::string`; here it is a promise |
 | Header-only C++23: concepts, `std::expected`, `constexpr` | Nothing to build or link, and the compiler checks the rules |
 
 ## Pros and cons
@@ -74,7 +74,7 @@ What jString does better than `std::string`:
 
 What it costs:
 
-- **Size.** A String is 128 bytes; `std::string` is 32. A class that holds many of them grows.
+- **Size.** A jString is 128 bytes; `std::string` is 32. A class that holds many of them grows.
 - **Making one is slower.** Every byte is checked, and mixed text on the heap also builds the table: 11 ns against
   1.9 ns for 10 bytes, 4.4 us against 29 ns for 4 KiB of mixed text.
 - **Appending is slower:** about 6 times (876 us against 136 us for 100,000 appends of 10 bytes), because every
@@ -85,15 +85,15 @@ What it costs:
   made of two, counts as two. jString does not handle grapheme clusters, normalization, case or locale.
 - **Only UTF-8 is built.** The encoding is a template parameter, but no other encoding is written yet.
 - **Crossing to code that uses `std::string`** means `from()` and a check of every byte each time text comes in.
-- **A view into a String is good only until the String changes or moves**: short text moves with the String.
+- **A view into a jString is good only until the jString changes or moves**: short text moves with the jString.
 - **Needs a C++23 compiler:** g++ 15 or clang++ 21 and newer, and it is tested only on Linux.
 
 ## The types
 
 | Type | What it is |
 |---|---|
-| `String<E = Utf8, InlineUnits = 64>` | Owned text: a value type that copies, moves (leaving the source empty), compares and hashes. Text under 64 units is held inside it, with no heap |
-| `StringView<E = Utf8>` | Borrowed text, for parameters. Keep a `String`, pass a `StringView` |
+| `jstr::String<E = Utf8, InlineUnits = 64>` | Owned text: a value type that copies, moves (leaving the source empty), compares and hashes. Text under 64 units is held inside it, with no heap |
+| `jstr::StringView<E = Utf8>` | Borrowed text, for parameters. Keep a `jstr::String`, pass a `jstr::StringView` |
 | `Literal<E = Utf8>`, `"..."_js` | Text checked while compiling, which lives as long as the program |
 | `CodePointPosition<IndexBase>` | A position counted in code points, from 0 (`CodePointIndex`, the default) or from 1 (`CodePointNumber`) |
 | `CodePointCount` | A length in code points, so that a start and a length cannot be swapped |
@@ -105,23 +105,23 @@ What it costs:
 Each of these has a test in `Lin/v001/tests/compile_fail`. Each test also checks that the same file compiles once the
 mistake is taken out.
 
-- making a String from a `char*` or `std::string` without `from()`, or from a view without naming the copy
+- making a jString from a `char*` or `std::string` without `from()`, or from a view without naming the copy
 - an invalid UTF-8 literal, or a run-time array passed as a literal
 - `s[0]`: a byte index can land inside a code point
 - ignoring `from()`'s answer
 - a plain number as a position, a base or a code point; a start and a count swapped
-- a view into a temporary String
+- a view into a temporary jString
 
 ## How fast
 
-A String knows how many code points it holds, so `count_code_points()` costs nothing. For text on the heap that is not
+A jString knows how many code points it holds, so `count_code_points()` costs nothing. For text on the heap that is not
 all ASCII it also keeps a table of where each code point starts, 4 bytes each, so `at()`, `substring()` and `replace()`
 find their place at once instead of walking the text. ASCII needs no table: code point n is byte n. Short text is held
-inside the String, never on the heap, and is short enough to count in a few steps. A `StringView` keeps no table, and
+inside the jString, never on the heap, and is short enough to count in a few steps. A `jstr::StringView` keeps no table, and
 counts 16 bytes at a step.
 
-What that costs: making a String checks every byte (`std::string` checks none), and for mixed text on the heap also
-builds the table, which is 4 bytes per code point. A String is 128 bytes; `std::string` is 32.
+What that costs: making a jString checks every byte (`std::string` checks none), and for mixed text on the heap also
+builds the table, which is 4 bytes per code point. A jString is 128 bytes; `std::string` is 32.
 
 `bench/bench_string.cpp` times each job both ways. Build `gcc-release` or `clang-release` and run
 `build/<preset>/bench_string`, pinned to one core (`taskset -c 5`) for steady numbers. On the host (Core Ultra 7 265,
