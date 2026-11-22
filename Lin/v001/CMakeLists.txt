@@ -97,14 +97,12 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # Contradicts -Wswitch-default, which the owner requires: a switch over an enum names every value,
     # checked by -Wswitch-enum, and also has a default, because a value from outside can be out of range.
     -Wno-covered-switch-default)
-  # clang++ 23 brought the lifetime-safety analysis into -Weverything. Its checks for real dangling stay live; two of its
-  # groups are left out. Older clang++ does not know these names and fails on an unknown one, so they are added only where known.
+  # clang++ 23 brought the lifetime-safety analysis into -Weverything, and all of it is live but one group. Older clang++
+  # does not know the group's name and fails on an unknown one, so it is left out only where it is known.
   include(CheckCXXCompilerFlag)
-  check_cxx_compiler_flag(-Wlifetime-safety-invalidation JSTR_CXX_HAS_LIFETIME_SAFETY)
+  check_cxx_compiler_flag(-Wlifetime-safety-suggestions JSTR_CXX_HAS_LIFETIME_SAFETY)
   if(JSTR_CXX_HAS_LIFETIME_SAFETY)
     list(APPEND JSTR_WARNING_FLAGS
-      # False positive in clang++ 23.1: `out += 'a'; out += "b";` on a std::string& parameter reports `out` itself invalidated.
-      -Wno-lifetime-safety-invalidation
       # Asks for [[clang::lifetimebound]], which g++ rejects as an error under -Wattributes, and a macro to hide it is banned.
       -Wno-lifetime-safety-suggestions)
   endif()
