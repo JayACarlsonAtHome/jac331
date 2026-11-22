@@ -6,6 +6,13 @@ hard to use wrong. A mistake is a compile error where it can be, and an empty an
 
 Header-only: `#include "jString/v001/jstring.hpp"` from `Lin/v001/include`.
 
+## Compiler reports
+
+Building jString and jCppGUI with every warning an error on both g++ and clang++, and turning none off, found three
+compiler problems: two in clang++ 23's lifetime-safety analysis, and one where g++ rejects `[[clang::lifetimebound]]`
+and so misses a dangling view that clang++ catches. Each is cut down to one small file in
+[compiler_reports](compiler_reports/README.md), for the compilers' developers.
+
 ```cpp
 #include "jString/v001/jstring.hpp"
 using namespace jstr::literals;

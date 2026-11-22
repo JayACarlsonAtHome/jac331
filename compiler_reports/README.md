@@ -1,0 +1,145 @@
+# Compiler reports
+
+jCppGUI and jString (repository jac331) build with every warning an error, on both g++ and clang++, with no
+warning turned off to hide a false one. Doing that found three compiler problems. Each is cut down here to one small file, checked on the
+compiler named, with the command that shows it.
+
+| # | Compiler | Problem |
+|---|---|---|
+| 1 | clang++ 23.1 | `-Wlifetime-safety-invalidation` reports a reference parameter invalidated by `push_back` |
+| 2 | clang++ 23.1 | Asks for `[[clang::lifetimebound]]`, then cannot verify it, wherever it is put |
+| 3 | g++ 16.2 | Rejects `[[clang::lifetimebound]]`, and so misses a dangling view that clang++ catches |
+
+Trackers: clang at https://github.com/llvm/llvm-project/issues, gcc at https://gcc.gnu.org/bugzilla/.
+
+---
+
+## 1. clang++: -Wlifetime-safety-invalidation reports a reference parameter invalidated by push_back
+
+**Compiler:** clang version 23.1.5 (Fedora 23.1.5-2.fc45)
+
+Save as `clang_1_invalidation.cpp`:
+
+```cpp
+#include <vector>
+
+void append_two(std::vector<int>& out) {
+    out.push_back(1);
+    out.push_back(2);  // reported: parameter 'out' is later invalidated
+}
+
+int main() {
+    std::vector<int> v;
+    append_two(v);
+    return static_cast<int>(v.size()) - 2;
+}
+```
+
+`clang++ -std=c++23 -Wlifetime-safety -fsyntax-only clang_1_invalidation.cpp` gives:
+
+```
+clang_1_invalidation.cpp:3:17: warning: parameter 'out' is later invalidated [-Wlifetime-safety-invalidation]
+clang_1_invalidation.cpp:4:9: note: parameter 'out' is invalidated here
+clang_1_invalidation.cpp:5:5: note: later used here
+```
+
+**Expected:** no warning. `push_back` can invalidate pointers, references and iterators to the vector's
+*elements*, but `out` refers to the vector object itself, which `push_back` never invalidates. The same
+pattern on a local vector is not reported.
+
+**Why it matters:** appending to an out-parameter more than once is one of the most common ways to build output
+in C++. In jCppGUI it fired at 9 places, all false. The only ways to a clean build were to turn off the whole
+invalidation check, which also hides the real bugs it exists to find, or to rewrite each function to build into
+a local and append once. We rewrote them.
+
+---
+
+## 2. clang++: asks for [[clang::lifetimebound]], then cannot verify it
+
+**Compiler:** clang version 23.1.5 (Fedora 23.1.5-2.fc45)
+
+Save as `clang_2_suggest_then_cannot_verify.cpp`. `LB` is the attribute on the declaration, `LB2` on the definition:
+
+```cpp
+#include <tuple>
+
+template <class Node>
+constexpr auto& find(Node& node LB);
+
+template <class Tuple>
+constexpr auto& find_in(Tuple& children) { return find(std::get<0>(children)); }
+
+template <class Node>
+constexpr auto& find(Node& node LB2) {
+    if constexpr (requires { node.children; }) return find_in(node.children);
+    else return node;
+}
+
+struct Leaf { int value = 0; };
+struct Branch { std::tuple<Leaf> children; };
+
+int main() {
+    Branch b;
+    return find(b).value;
+}
+```
+
+```
+F="-std=c++23 -Wlifetime-safety -Wlifetime-safety-suggestions -Wlifetime-safety-lifetimebound-violation -fsyntax-only"
+clang++ $F -DLB= -DLB2= clang_2_suggest_then_cannot_verify.cpp
+clang++ $F "-DLB=[[clang::lifetimebound]]" -DLB2= clang_2_suggest_then_cannot_verify.cpp
+clang++ $F -DLB= "-DLB2=[[clang::lifetimebound]]" clang_2_suggest_then_cannot_verify.cpp
+clang++ $F "-DLB=[[clang::lifetimebound]]" "-DLB2=[[clang::lifetimebound]]" clang_2_suggest_then_cannot_verify.cpp
+```
+
+- Without the attribute: `warning: parameter in intra-TU function should be marked [[clang::lifetimebound]] [-Wlifetime-safety-intra-tu-suggestions]`
+- With it on the declaration, the definition, or both: `warning: could not verify that the return value can be lifetime bound to 'node' [-Wlifetime-safety-lifetimebound-violation]`
+
+**Expected:** one or the other. The function returns `node` itself or, through `find_in`, a reference to a member
+of a member of `node`, so the attribute is correct and should verify. As it is, no version of this code builds
+clean with both groups on. The call through a forward-declared template seems to be what the verifier cannot
+follow.
+
+A second case, not yet cut down: a class template's constructor, `Button(CheckedText caption, OnClick on_click)`,
+that moves `on_click` (a lambda's type) into a member gets the same suggest-then-cannot-verify pair.
+
+**What we tested:** with every `[[clang::lifetimebound]]` clang++ 23.1 asked for added to jCppGUI (121, in a
+scratch copy), clang++ checked every caller and found no dangling anywhere; these two places are all that stood
+between it and a clean build.
+
+---
+
+## 3. g++: [[clang::lifetimebound]] is rejected, and the dangling it would catch is missed
+
+**Compiler:** g++ (GCC) 16.2.1 20261029 (Red Hat 16.2.1-3), with clang version 23.1.5 for comparison
+
+Save as `gcc_lifetimebound.cpp`:
+
+```cpp
+#include <string>
+#include <string_view>
+
+std::string_view view_of(const std::string& text [[clang::lifetimebound]]) { return text; }
+
+int main() {
+    const std::string_view v = view_of(std::string{"text"});  // v dangles: the string is gone at the semicolon
+    return static_cast<int>(v.size()) - 4;
+}
+```
+
+`g++ -std=c++23 -Wall -Wextra -fsyntax-only gcc_lifetimebound.cpp` gives only:
+
+```
+warning: 'clang::lifetimebound' scoped attribute directive ignored [-Wattributes]
+```
+
+and nothing about the dangling view. `clang++ -std=c++23 -fsyntax-only gcc_lifetimebound.cpp` gives:
+
+```
+warning: temporary whose address is used as value of local variable 'v' will be destroyed at the end of the full-expression [-Wdangling]
+```
+
+**Asking for:** g++ support for `lifetimebound`, as `[[gnu::lifetimebound]]` or by accepting
+`[[clang::lifetimebound]]`, so that `-Wdangling-reference` can use it. Today a project that builds with `-Werror`
+on both compilers cannot use the attribute at all without a macro or `-Wno-attributes=clang::lifetimebound`, so
+clang++'s check is lost on all code that must also build with g++.
