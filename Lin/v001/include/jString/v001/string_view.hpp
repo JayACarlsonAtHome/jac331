@@ -335,7 +335,7 @@ template <LiteralUnits L>
 }
 
 template <LiteralUnits L>
-inline constexpr bool literal_is_ascii = std::ranges::all_of(L.text(), [](char unit) { return value_of(unit) < 0x80U; });
+inline constexpr bool literal_is_ascii = std::ranges::all_of(L.text(), [](char unit) noexcept { return value_of(unit) < 0x80U; });
 
 // Whether a literal can be text of Type T: any literal can, but Ascii takes ASCII only.
 template <Type T, LiteralUnits L>
