@@ -58,6 +58,6 @@ int main() {
     check(!grid.take_refusal().has_value(), "and no refusal");
     check(grid.tallest_line_in_use(Engine{false}) == 16, "without one, the regular height");
     const auto refusal = grid.take_refusal();
-    check(refusal.has_value() && refusal->code == 7 && refusal->message == "this shaper has no monospace face", "and the refusal, intact");
+    check(refusal.has_value() && refusal->code == 7 && refusal->message == "this shaper has no monospace face"_js, "and the refusal, intact");
     return check.finish();
 }

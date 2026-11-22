@@ -9,7 +9,7 @@ int main(int count, char**) {
 #ifdef JSTR_BREAK
     const jstr::StringView<> view = filled;
 #else
-    const auto view = jstr::StringView<>::from(std::string_view{filled});
+    const auto view = jstr::String<>::from(std::string_view{filled});
 #endif
     static_cast<void>(view);
 }

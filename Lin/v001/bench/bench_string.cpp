@@ -1,7 +1,8 @@
 // File: bench/bench_string.cpp
 // Purpose: Times jString against std::string doing the same jobs, and prints one table. jString is timed twice: as it
-//          is (String<>, short text held inside it) and with every text on the heap (String<Utf8, 1>), so that what the
-//          inside buffer buys can be read off. Where std::string has no answer of its own (the 500th code point, a piece
+//          is (String<>, up to 16 code points held inside it) and with every text on the heap (String<Utf8, 0>), so that
+//          what the inside buffer buys can be read off. jString keeps a code point to a 4-byte cell; std::string keeps
+//          the packed UTF-8, so jString's way out (packing to UTF-8) is timed too. Where std::string has no answer of its own (the 500th code point, a piece
 //          counted in code points), it is given the plain correct way: walking the UTF-8, as a programmer would write it.
 //          Byte indexing is timed separately and labelled, because it is fast and, for text that is not ASCII, wrong.
 //
@@ -36,9 +37,10 @@ using jstr::CodePointIndex;
 using jstr::String;
 using jstr::StringView;
 using jstr::Utf8;
+using namespace jstr::literals;
 
-// The same String with every text on the heap: only its terminating zero fits inside.
-using HeapString = String<Utf8, 1>;
+// The same String with every text on the heap: nothing fits inside.
+using HeapString = String<Utf8, 0>;
 
 // Each result is stored here, so the compiler cannot decide the work was never needed.
 volatile std::size_t g_sink = 0;
@@ -50,6 +52,17 @@ void keep(std::string_view made) {
     std::size_t seen = std::bit_cast<std::uintptr_t>(made.data());
     if (!made.empty()) {
         for (const char unit : {made.front(), made[made.size() / 2], made.back()}) seen += static_cast<unsigned char>(unit);
+    }
+    g_sink = seen;
+}
+
+// A jString made: its first, middle and last code points, so that no compiler can leave out filling it.
+void keep(StringView<> made) {
+    std::size_t seen = made.count_code_points();
+    if (!made.empty()) {
+        for (const std::size_t n : {std::size_t{0}, made.count_code_points() / 2, made.count_code_points() - 1}) {
+            for (const char32_t c : made.at(CodePointIndex{n})->code_points()) seen += c;
+        }
     }
     g_sink = seen;
 }
@@ -144,7 +157,7 @@ public:
     static void heading() {
         std::cout << std::left << std::setw(50) << "job (time for one)" << std::right << std::setw(11) << "std::string" << std::setw(11)
                   << "jString" << std::setw(11) << "heap-only" << std::setw(9) << "jStr/std" << '\n';
-        std::cout << std::left << std::setw(50) << "" << std::right << std::setw(11) << "" << std::setw(11) << "(64 inside)" << std::setw(11)
+        std::cout << std::left << std::setw(50) << "" << std::right << std::setw(11) << "" << std::setw(11) << "(16 inside)" << std::setw(11)
                   << "jString" << '\n';
         std::cout << std::string(92, '-') << '\n';
     }
@@ -224,36 +237,36 @@ int main(int argc, char**) {
     // --- Making text from bytes: std::string copies, jString checks and copies ---
     bench.job("make from 10 bytes ASCII", 2'000'000,
               [&] { const std::string s{short_ascii}; keep(s); },
-              [&](const auto& m) { const auto s = string_of<decltype(m)>::from(short_ascii); keep(s->units()); });
+              [&](const auto& m) { const auto s = string_of<decltype(m)>::from(short_ascii); keep(s->view()); });
     bench.job("make from 18 bytes mixed", 2'000'000,
               [&] { const std::string s{short_mixed}; keep(s); },
-              [&](const auto& m) { const auto s = string_of<decltype(m)>::from(short_mixed); keep(s->units()); });
+              [&](const auto& m) { const auto s = string_of<decltype(m)>::from(short_mixed); keep(s->view()); });
     bench.job("make from 60 bytes ASCII", 2'000'000,
               [&] { const std::string s{medium_ascii}; keep(s); },
-              [&](const auto& m) { const auto s = string_of<decltype(m)>::from(medium_ascii); keep(s->units()); });
+              [&](const auto& m) { const auto s = string_of<decltype(m)>::from(medium_ascii); keep(s->view()); });
     bench.job("make from 4 KiB ASCII", 100'000,
               [&] { const std::string s{ascii_4k.bytes}; keep(s); },
-              [&](const auto& m) { const auto s = string_of<decltype(m)>::from(ascii_4k.bytes); keep(s->units()); });
+              [&](const auto& m) { const auto s = string_of<decltype(m)>::from(ascii_4k.bytes); keep(s->view()); });
     bench.job("make from 4 KiB mixed", 100'000,
               [&] { const std::string s{mixed_4k.bytes}; keep(s); },
-              [&](const auto& m) { const auto s = string_of<decltype(m)>::from(mixed_4k.bytes); keep(s->units()); });
+              [&](const auto& m) { const auto s = string_of<decltype(m)>::from(mixed_4k.bytes); keep(s->view()); });
     bench.job("make from 1 MiB mixed", 200,
               [&] { const std::string s{mixed_1m.bytes}; keep(s); },
-              [&](const auto& m) { const auto s = string_of<decltype(m)>::from(mixed_1m.bytes); keep(s->units()); });
+              [&](const auto& m) { const auto s = string_of<decltype(m)>::from(mixed_1m.bytes); keep(s->view()); });
     bench.job("make from 4 KiB mixed, lossy (all valid)", 100'000,
               [&] { const std::string s{mixed_4k.bytes}; keep(s); },
-              [&](const auto& m) { const auto s = string_of<decltype(m)>::from_lossy(mixed_4k.bytes); keep(s.units()); });
+              [&](const auto& m) { const auto s = string_of<decltype(m)>::from_lossy(mixed_4k.bytes); keep(s.view()); });
 
     // --- Copying ---
     bench.job("copy 10 bytes", 2'000'000,
               [&] { const std::string t{std_short}; keep(t); },
-              [&](const auto& m) { const string_of<decltype(m)> t{m.short_ascii}; keep(t.units()); });
+              [&](const auto& m) { const string_of<decltype(m)> t{m.short_ascii}; keep(t.view()); });
     bench.job("copy 4 KiB ASCII", 100'000,
               [&] { const std::string t{std_ascii}; keep(t); },
-              [&](const auto& m) { const string_of<decltype(m)> t{m.ascii_4k}; keep(t.units()); });
-    bench.job("copy 4 KiB mixed (jString copies its table)", 100'000,
+              [&](const auto& m) { const string_of<decltype(m)> t{m.ascii_4k}; keep(t.view()); });
+    bench.job("copy 4 KiB mixed", 100'000,
               [&] { const std::string t{std_mixed}; keep(t); },
-              [&](const auto& m) { const string_of<decltype(m)> t{m.mixed_4k}; keep(t.units()); });
+              [&](const auto& m) { const string_of<decltype(m)> t{m.mixed_4k}; keep(t.view()); });
 
     // --- Appending ---
     bench.job("append 10 bytes, 100,000 times (one = all)", 20,
@@ -261,35 +274,35 @@ int main(int argc, char**) {
               [&](const auto& m) {
                   string_of<decltype(m)> s;
                   for (int i = 0; i < 100'000; ++i) s += m.short_ascii;
-                  keep(s.units());
+                  keep(s.view());
               });
     bench.job("append 18 bytes mixed, 10,000 times", 50,
               [&] { std::string s; for (int i = 0; i < 10'000; ++i) s += short_mixed; keep(s); },
               [&](const auto& m) {
                   string_of<decltype(m)> s;
                   for (int i = 0; i < 10'000; ++i) s += m.short_mixed;
-                  keep(s.units());
+                  keep(s.view());
               });
 
     // --- One code point by its position ---
     bench.job("at(n) x1024, 4 KiB ASCII (std: s[n], right here)", 1000,
               [&] { std::size_t sum = 0; for (const std::size_t n : ascii_at) sum += static_cast<unsigned char>(std_ascii[n]); keep(sum); },
-              [&](const auto& m) { std::size_t sum = 0; for (const std::size_t n : ascii_at) sum += m.ascii_4k.at(CodePointIndex{n})->size_units(); keep(sum); });
+              [&](const auto& m) { std::size_t sum = 0; for (const std::size_t n : ascii_at) sum += m.ascii_4k.at(CodePointIndex{n})->size_utf8(); keep(sum); });
     bench.job("at(n) x1024, 4 KiB mixed (std: walks the UTF-8)", 100,
               [&] { std::size_t sum = 0; for (const std::size_t n : mixed_at) sum += std_offset_of(std_mixed, n); keep(sum); },
-              [&](const auto& m) { std::size_t sum = 0; for (const std::size_t n : mixed_at) sum += m.mixed_4k.at(CodePointIndex{n})->size_units(); keep(sum); });
+              [&](const auto& m) { std::size_t sum = 0; for (const std::size_t n : mixed_at) sum += m.mixed_4k.at(CodePointIndex{n})->size_utf8(); keep(sum); });
     bench.job("at(n) x1024, 4 KiB mixed (std: s[n], WRONG)", 1000,
               [&] { std::size_t sum = 0; for (const std::size_t n : mixed_at) sum += static_cast<unsigned char>(std_mixed[n]); keep(sum); },
-              [&](const auto& m) { std::size_t sum = 0; for (const std::size_t n : mixed_at) sum += m.mixed_4k.at(CodePointIndex{n})->size_units(); keep(sum); });
+              [&](const auto& m) { std::size_t sum = 0; for (const std::size_t n : mixed_at) sum += m.mixed_4k.at(CodePointIndex{n})->size_utf8(); keep(sum); });
     bench.job("at(n) x1024, 18 bytes mixed (std: walks)", 1000,
               [&] { std::size_t sum = 0; for (const std::size_t n : short_at) sum += std_offset_of(short_mixed, n); keep(sum); },
-              [&](const auto& m) { std::size_t sum = 0; for (const std::size_t n : short_at) sum += m.short_mixed.at(CodePointIndex{n})->size_units(); keep(sum); });
-    bench.job("at(n) x1024, view of 4 KiB mixed (no table)", 100,
+              [&](const auto& m) { std::size_t sum = 0; for (const std::size_t n : short_at) sum += m.short_mixed.at(CodePointIndex{n})->size_utf8(); keep(sum); });
+    bench.job("at(n) x1024, view of 4 KiB mixed", 100,
               [&] { std::size_t sum = 0; for (const std::size_t n : mixed_at) sum += std_offset_of(std_mixed, n); keep(sum); },
               [&](const auto& m) {
                   std::size_t sum = 0;
                   const StringView<> view = m.mixed_4k.view();
-                  for (const std::size_t n : mixed_at) sum += view.at(CodePointIndex{n})->size_units();
+                  for (const std::size_t n : mixed_at) sum += view.at(CodePointIndex{n})->size_utf8();
                   keep(sum);
               });
     bench.job("substring 100 code points x1024, 4 KiB mixed", 100,
@@ -305,7 +318,7 @@ int main(int argc, char**) {
               },
               [&](const auto& m) {
                   std::size_t sum = 0;
-                  for (const std::size_t n : mixed_starts) sum += m.mixed_4k.substring(CodePointIndex{n}, CodePointCount{100})->size_units();
+                  for (const std::size_t n : mixed_starts) sum += m.mixed_4k.substring(CodePointIndex{n}, CodePointCount{100})->count_code_points();
                   keep(sum);
               });
     bench.job("replace 1 code point, 4 KiB mixed", 100'000,
@@ -316,7 +329,16 @@ int main(int argc, char**) {
                   s.replace(begin, end - begin, "X");
                   keep(s);
               },
-              [&](const auto& m) { const auto s = m.mixed_4k.replace(CodePointIndex{2000}, CodePointCount{1}, "X"); keep(s->units()); });
+              [&](const auto& m) { const auto s = m.mixed_4k.replace(CodePointIndex{2000}, CodePointCount{1}, "X"_js); keep(s->view()); });
+
+    // --- Text going out: std::string already holds the packed bytes; jString packs its cells ---
+    std::vector<char> out_buffer(mixed_4k.bytes.size());
+    bench.job("pack 4 KiB mixed into a buffer (std: copy)", 100'000,
+              [&] { std::ranges::copy(std_mixed, out_buffer.begin()); keep(std::string_view{out_buffer.data(), out_buffer.size()}); },
+              [&](const auto& m) { keep(*m.mixed_4k.write_utf8(out_buffer)); });
+    bench.job("pack 4 KiB ASCII to its own bytes (std: copy)", 100'000,
+              [&] { const std::string t{std_ascii}; keep(t); },
+              [&](const auto& m) { const std::vector<char> t = m.ascii_4k.to_utf8(); keep(std::string_view{t.data(), t.size()}); });
 
     // --- Counting, walking, searching, comparing, hashing ---
     bench.job("count code points, 4 KiB mixed", 100'000,
@@ -334,7 +356,7 @@ int main(int argc, char**) {
               [&](const auto& m) { std::size_t sum = 0; for (const char32_t c : m.mixed_4k.code_points()) sum += c; keep(sum); });
     bench.job("contains, 4 KiB mixed, not there", 100'000,
               [&] { keep(std_mixed.find("zebra") == std::string::npos ? 1U : 0U); },
-              [&](const auto& m) { keep(m.mixed_4k.contains("zebra") ? 1U : 0U); });
+              [&](const auto& m) { keep(m.mixed_4k.contains("zebra"_js) ? 1U : 0U); });
     bench.job("compare equal, 4 KiB", 100'000,
               [&] { keep(std_mixed == std_mixed_copy ? 1U : 0U); },
               [&](const auto& m) { keep(m.mixed_4k == m.mixed_4k_copy ? 1U : 0U); });
@@ -344,7 +366,7 @@ int main(int argc, char**) {
 
     std::cout << "\nsizeof: std::string " << sizeof(std::string) << " bytes; jstr::String<> " << sizeof(String<>) << " bytes; heap-only "
               << sizeof(HeapString) << " bytes; jstr::StringView " << sizeof(StringView<>) << " bytes\n";
-    std::cout << "table: 4 bytes per code point, kept for text on the heap that is not ASCII (4 KiB mixed: "
-              << (mixed_4k.code_points + 1) * 4 << " bytes)\n";
+    std::cout << "cells: 4 bytes per code point (4 KiB mixed: " << mixed_4k.code_points * 4 << " bytes, against " << mixed_4k.bytes.size()
+              << " packed)\n";
     return 0;
 }
