@@ -2,6 +2,7 @@
 # Purpose: Builds the jString v001 tests. jString itself is header-only (include/jString/v001). Everything is found
 #          relative to this file. The pin check, the hardening and the warning flags are jCppGUI's, so code that uses
 #          jString builds under the same rules it was tested under.
+# Modified 2026-11-23 by Claude Opus 5.5: lifetime-safety suggestions back on; g++ accepts clang::lifetimebound.
 cmake_minimum_required(VERSION 3.26)
 project(jString_v001 LANGUAGES C CXX)
 
@@ -85,7 +86,10 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     -Wstringop-overflow=4 -Wsuggest-override -Wtrampolines -Wunused-const-variable=2 -Wunused-macros
     -Wvector-operation-performance -Wvirtual-inheritance -Wvla -Wwrite-strings
     -Weffc++ -Wnrvo -Wstack-protector -Wsuggest-attribute=const -Wsuggest-attribute=noreturn
-    -Wsuggest-final-methods -Wsuggest-final-types -Wunsafe-loop-optimizations)
+    -Wsuggest-final-methods -Wsuggest-final-types -Wunsafe-loop-optimizations
+    # g++ has no lifetimebound of its own. This lets it accept clang's, which clang++ checks at every caller; any other
+    # clang:: attribute, or a misspelled one, is still an error here.
+    -Wno-attributes=clang::lifetimebound)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   list(APPEND JSTR_WARNING_FLAGS
     -Weverything
@@ -97,15 +101,6 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # Contradicts -Wswitch-default, which the owner requires: a switch over an enum names every value,
     # checked by -Wswitch-enum, and also has a default, because a value from outside can be out of range.
     -Wno-covered-switch-default)
-  # clang++ 23 brought the lifetime-safety analysis into -Weverything, and all of it is live but one group. Older clang++
-  # does not know the group's name and fails on an unknown one, so it is left out only where it is known.
-  include(CheckCXXCompilerFlag)
-  check_cxx_compiler_flag(-Wlifetime-safety-suggestions JSTR_CXX_HAS_LIFETIME_SAFETY)
-  if(JSTR_CXX_HAS_LIFETIME_SAFETY)
-    list(APPEND JSTR_WARNING_FLAGS
-      # Asks for [[clang::lifetimebound]], which g++ rejects as an error under -Wattributes, and a macro to hide it is banned.
-      -Wno-lifetime-safety-suggestions)
-  endif()
 endif()
 add_library(jstr_warnings INTERFACE)
 target_compile_options(jstr_warnings INTERFACE ${JSTR_WARNING_FLAGS})

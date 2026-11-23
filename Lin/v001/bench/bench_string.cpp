@@ -14,6 +14,7 @@
 //
 //          Build it optimized (gcc-release or clang-release) for numbers worth reading. Any argument (ctest passes
 //          --quick) runs every job a few times only, to prove it works.
+// Modified 2026-11-23 by Claude Opus 5.5: [[clang::lifetimebound]] where clang++ 23 asks for it.
 #include <algorithm>
 #include <bit>
 #include <chrono>
@@ -176,8 +177,9 @@ enum class Holds : unsigned char { ascii, mixed };
 
 class Bench {
 public:
-    Bench(bool quick, const Made<Type::Ascii>& ascii, const Made<Type::UTF8Packed>& packed, const Made<Type::UTF8Full>& full, const Made<Type::UTF16>& utf16,
-          const Made<Type::UTF32>& utf32)
+    Bench(bool quick, const Made<Type::Ascii>& ascii [[clang::lifetimebound]],
+          const Made<Type::UTF8Packed>& packed [[clang::lifetimebound]], const Made<Type::UTF8Full>& full [[clang::lifetimebound]],
+          const Made<Type::UTF16>& utf16 [[clang::lifetimebound]], const Made<Type::UTF32>& utf32 [[clang::lifetimebound]])
         : quick_{quick}, ascii_{ascii}, packed_{packed}, full_{full}, utf16_{utf16}, utf32_{utf32} {}
 
     // Times one job: std::string's way, then each Type's, given that Type's texts.

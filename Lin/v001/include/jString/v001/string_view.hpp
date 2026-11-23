@@ -8,6 +8,7 @@
 //          units it keeps: text goes out only by name, packed as files and C libraries read it (to_packed(),
 //          write_packed(), to_c_string()), or as UTF-8 whatever its Type (to_utf8(), write_utf8()). Text of one Type
 //          never meets text of another without being converted by name (convert<To>(), in string.hpp).
+// Modified 2026-11-23 by Claude Opus 5.5: [[clang::lifetimebound]] where clang++ 23 asks for it.
 #pragma once
 
 #include <algorithm>
@@ -127,7 +128,7 @@ public:
 
         // Valid text: decoded with no checking.
         [[nodiscard]] constexpr char32_t operator*() const noexcept { return detail::decode_at<T>(rest_, 0); }
-        constexpr iterator& operator++() noexcept {
+        constexpr iterator& operator++() noexcept [[clang::lifetimebound]] {
             rest_ = rest_.subspan(detail::length_at<T>(rest_, 0));
             return *this;
         }
@@ -145,7 +146,7 @@ public:
 
     private:
         friend CodePoints;
-        constexpr explicit iterator(kept rest) noexcept : rest_{rest} {}
+        constexpr explicit iterator(kept rest [[clang::lifetimebound]]) noexcept : rest_{rest} {}
         kept rest_{};
     };
 
@@ -154,7 +155,7 @@ public:
 
 private:
     friend StringView<T>;
-    constexpr explicit CodePoints(kept text) noexcept : text_{text} {}
+    constexpr explicit CodePoints(kept text [[clang::lifetimebound]]) noexcept : text_{text} {}
     kept text_{};
 };
 
@@ -290,7 +291,7 @@ private:
     friend struct std::hash<StringView>;
 
     // Only for units of valid text, kept as T keeps it.
-    constexpr explicit StringView(detail::kept<T> units) noexcept : units_{units} {}
+    constexpr explicit StringView(detail::kept<T> units [[clang::lifetimebound]]) noexcept : units_{units} {}
 
     [[nodiscard]] constexpr detail::units_view<T> view() const noexcept { return detail::view_of<T>(units_); }
 

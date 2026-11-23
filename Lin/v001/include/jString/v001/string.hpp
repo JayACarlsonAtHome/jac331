@@ -20,6 +20,7 @@
 //            - to_c_string() gives nothing, rather than a shortened string, when the text holds U+0000
 //            - text of one Type never becomes another without convert<To>(), and convert<Type::Ascii>() says which code
 //              point would not fit, rather than losing it (convert_lossy<Type::Ascii>() makes it '?', by name)
+// Modified 2026-11-23 by Claude Opus 5.5: [[clang::lifetimebound]] where clang++ 23 asks for it.
 #pragma once
 
 #include <algorithm>
@@ -130,8 +131,8 @@ public:
     }
     constexpr ~String() = default;
 
-    [[nodiscard]] constexpr StringView<T> view() const noexcept { return StringView<T>{kept_units()}; }
-    constexpr operator StringView<T>() const noexcept { return view(); }
+    [[nodiscard]] constexpr StringView<T> view() const noexcept [[clang::lifetimebound]] { return StringView<T>{kept_units()}; }
+    constexpr operator StringView<T>() const noexcept [[clang::lifetimebound]] { return view(); }
 
     [[nodiscard]] constexpr bool empty() const noexcept { return size_ == 0; }
     // In Ascii, UTF8Full and UTF32 a division; in UTF8Packed and UTF16 a walk of the text.
@@ -189,7 +190,7 @@ public:
     // Adds text at the end. The text may be this String's own: it is read in full before anything it is in is let go.
     // When there is no room, the room is doubled, so a String built by many appends is copied about once, not once per
     // append. The text added is valid and kept as this String keeps text, so nothing is checked: it is copied.
-    constexpr String& append(StringView<T> more) {
+    constexpr String& append(StringView<T> more) [[clang::lifetimebound]] {
         const detail::kept<T> added = more.kept_units();
         if (added.empty()) return *this;
         const std::size_t total = size_ + added.size();
@@ -242,7 +243,7 @@ private:
     [[nodiscard]] constexpr std::size_t room() const noexcept { return on_heap() ? heap_.capacity() : inline_units; }
 
     // The text's units. On the heap, the vector holds exactly the text's units.
-    [[nodiscard]] constexpr detail::kept<T> kept_units() const noexcept {
+    [[nodiscard]] constexpr detail::kept<T> kept_units() const noexcept [[clang::lifetimebound]] {
         if (on_heap()) return detail::kept<T>{heap_};
         return detail::kept<T>{inside_}.first(size_);
     }
@@ -283,7 +284,7 @@ private:
     }
 
     // Only on a String just made: room for size units, inside or on the heap, for the caller to fill.
-    [[nodiscard]] constexpr std::span<unit> fresh(std::size_t size) {
+    [[nodiscard]] constexpr std::span<unit> fresh(std::size_t size) [[clang::lifetimebound]] {
         size_ = size;
         if (size <= inline_units) return std::span{inside_}.first(size);
         heap_.resize(size);
