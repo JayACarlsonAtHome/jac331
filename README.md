@@ -7,7 +7,7 @@ can only be found at run time. It is never a wrong answer.
 
 Header-only: `#include "jString/v001/jstring.hpp"` from `Lin/v001/include`.
 Everything is in the namespace `jString`; `jstr` is a short name for it (`namespace jstr = jString;`), so
-`jstr::String<jstr::Type::UTF8Packed>` is the same type.
+`jstr::String<jstr::Type::UTF8Packed>` is the same type. `jstr_vw<T>` is the short name of `jString::StringView<T>`.
 
 ## Compiler reports
 

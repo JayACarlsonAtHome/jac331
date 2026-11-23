@@ -387,6 +387,7 @@ int main() {
     check.context("UTF8Full: ");
     static_assert(jString::Utf8::cell_units == 4);
     static_assert(std::is_same_v<jstr::String<jstr::Type::UTF16>, jString::String<jString::Type::UTF16>>, "jstr is the short name of jString");
+    static_assert(std::is_same_v<jstr_vw<jstr::Type::UTF8Packed>, jString::StringView<jString::Type::UTF8Packed>>, "jstr_vw is the short name of StringView");
     const auto cells = String<Type::UTF8Full>::from(std::string_view{"\xC3\xA9\0x", 4});
     check(cells->count_code_points() == 3 && cells->size_packed() == 4, "three cells, four bytes packed");
     check(!String<Type::UTF8Full>{"éx"_js}.contains(*cells->at(CodePointIndex{1})), "U+0000 never matched in the zeros after é");

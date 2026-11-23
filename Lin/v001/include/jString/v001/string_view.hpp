@@ -399,6 +399,9 @@ template <detail::LiteralUnits L>
 
 }  // namespace jString::inline v001
 
+// The short name of a view, as jstr is of the namespace: jstr_vw<jstr::Type::UTF8Packed> is jString::StringView<jString::Type::UTF8Packed>.
+template <jString::Type T> using jstr_vw = jString::StringView<T>;
+
 template <jString::Type T>
 struct std::hash<jString::StringView<T>> {
     [[nodiscard]] std::size_t operator()(jString::StringView<T> text) const noexcept { return std::hash<jString::detail::units_view<T>>{}(text.view()); }
