@@ -1,7 +1,7 @@
 # Compiler reports
 
 jCppGUI and jString (repository jac331) build with every warning an error, on both g++ and clang++, with no
-warning turned off to hide a false one. Doing that found three compiler problems. Each is cut down here to one small file, checked on the
+warning turned off to hide a false one. Doing that found three compiler problems, and one thing clang could add. Each is cut down here to one small file, checked on the
 compiler named, with the command that shows it.
 
 | # | Compiler | Problem |
@@ -9,6 +9,7 @@ compiler named, with the command that shows it.
 | 1 | clang++ 23.1 | `-Wlifetime-safety-invalidation` reports a reference parameter invalidated by `push_back` |
 | 2 | clang++ 23.1 | Asks for `[[clang::lifetimebound]]`, then cannot verify it, wherever it is put |
 | 3 | g++ 16.2 | Rejects `[[clang::lifetimebound]]`, and so misses a dangling view that clang++ catches |
+| 4 | clang++ 23.1 | Feature request: a way to mark one `default:` as deliberate, for `-Wcovered-switch-default` |
 
 Trackers: clang at https://github.com/llvm/llvm-project/issues, gcc at https://gcc.gnu.org/bugzilla/.
 
@@ -143,3 +144,71 @@ warning: temporary whose address is used as value of local variable 'v' will be 
 `[[clang::lifetimebound]]`, so that `-Wdangling-reference` can use it. Today a project that builds with `-Werror`
 on both compilers cannot use the attribute at all without a macro or `-Wno-attributes=clang::lifetimebound`, so
 clang++'s check is lost on all code that must also build with g++.
+
+---
+
+## 4. clang++ feature request: mark a default label as deliberate
+
+**Compiler:** clang version 23.1.5 (Fedora 23.1.5-2.fc45); g++ (GCC) 16.2.1 for the second half
+
+Save as `clang_4_deliberate_default.cpp`:
+
+```cpp
+#include <cstdint>
+#include <cstdio>
+
+enum class Reason : std::uint8_t { FirstFrame, Resize, Damage };
+
+// Every value is named (-Wswitch-enum), and the default is there for a value outside the enum.
+const char* name_of(Reason reason) {
+    switch (reason) {
+        case Reason::FirstFrame: return "FirstFrame";
+        case Reason::Resize: return "Resize";
+        case Reason::Damage: return "Damage";
+        default: return "Unknown";  // reported by -Wcovered-switch-default
+    }
+}
+
+int main() {
+    // A byte read from a file or a socket: any value its type can hold.
+    const auto from_outside = static_cast<Reason>(7);
+    std::puts(name_of(from_outside));
+    return 0;
+}
+```
+
+`clang++ -std=c++23 -Wswitch-enum -Wswitch-default -Wcovered-switch-default -fsyntax-only clang_4_deliberate_default.cpp` gives:
+
+```
+clang_4_deliberate_default.cpp:12:9: warning: default label in switch which covers all enumeration values [-Wcovered-switch-default]
+```
+
+and with the `default:` removed, `-Wswitch-default` gives `'switch' missing 'default' label`. Built and run, the program
+prints `Unknown`: the default is reached, by a value the enum does not name.
+
+**The conflict:** `-Wswitch-enum` (name every value) with `-Wswitch-default` (always have a default) is a sound pair. The
+first catches a value added to the enum and not handled, even when a default is present; the second gives a value from
+outside the enum a chosen place to go. `-Wcovered-switch-default` exists to catch the first case for code without
+`-Wswitch-enum`, so with it the pair cannot be kept: every switch over an enum is an error one way or the other.
+`-Weverything` turns all three on, and there is no way to say, at one switch, that its default is meant.
+
+**What exists:** `[[clang::enum_extensibility(open)]]` on the enum does stop the warning, and `-Wswitch-enum` still
+reports a missing value:
+
+```cpp
+enum class [[clang::enum_extensibility(open)]] Reason : std::uint8_t { FirstFrame, Resize, Damage };
+```
+
+But it is a statement about the enum, made once for every switch over it, and g++ 16.2 does not know it:
+`g++ -std=c++23 -Wattributes` gives `'clang::enum_extensibility' scoped attribute directive ignored [-Wattributes]`, an
+error under `-Werror`. Code that builds with both compilers and every warning an error cannot use it.
+
+**Requested:** an attribute on the label, in the way `[[fallthrough]]` marks one deliberate fall-through:
+
+```cpp
+[[clang::deliberate]] default: return "Unknown";  // or any spelling: "this default is for values outside the enum"
+```
+
+that stops `-Wcovered-switch-default` at that switch only, and ideally a matching proposal for a standard attribute so
+that g++ would accept it too. Until then jCppGUI and jString keep `-Wswitch-enum` and `-Wswitch-default` and turn off
+`-Wcovered-switch-default`, with the reason beside the flag.
