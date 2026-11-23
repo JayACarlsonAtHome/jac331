@@ -1,15 +1,16 @@
 # Compiler reports
 
 jCppGUI and jString (repository jac331) build with every warning an error, on both g++ and clang++, with no
-warning turned off to hide a false one. Doing that found three compiler problems, and one thing clang could add. Each is cut down here to one small file, checked on the
+warning turned off to hide a false one. Doing that found four compiler problems, and one thing clang could add. Each is cut down here to one small file, checked on the
 compiler named, with the command that shows it.
 
 | # | Compiler | Problem |
 |---|---|---|
 | 1 | clang++ 23.1 | `-Wlifetime-safety-invalidation` reports a reference parameter invalidated by `push_back` |
-| 2 | clang++ 23.1 | Asks for `[[clang::lifetimebound]]`, then cannot verify it, wherever it is put |
+| 2 | clang++ 23.1, libstdc++ 16 | A reference returned through `std::get` cannot be marked `[[clang::lifetimebound]]` and verified |
 | 3 | g++ 16.2 | Rejects `[[clang::lifetimebound]]`, and so misses a dangling view that clang++ catches |
 | 4 | clang++ 23.1 | Feature request: a way to mark one `default:` as deliberate, for `-Wcovered-switch-default` |
+| 5 | clang++ 23.1 | One template parameter: `[[clang::lifetimebound]]` asked for by one instantiation, unverifiable in another |
 
 Trackers: clang at https://github.com/llvm/llvm-project/issues, gcc at https://gcc.gnu.org/bugzilla/.
 
@@ -55,58 +56,56 @@ a local and append once. We rewrote them.
 
 ---
 
-## 2. clang++: asks for [[clang::lifetimebound]], then cannot verify it
+## 2. clang++ and libstdc++: a reference returned through std::get cannot be lifetimebound
 
-**Compiler:** clang version 23.1.5 (Fedora 23.1.5-2.fc45)
+**Compiler:** clang version 23.1.5 (Fedora 23.1.5-2.fc45), with libstdc++ from GCC 16.2.1
 
-Save as `clang_2_suggest_then_cannot_verify.cpp`. `LB` is the attribute on the declaration, `LB2` on the definition:
+Save as `clang_2_get_not_lifetimebound.cpp`:
 
 ```cpp
 #include <tuple>
 
-template <class Node>
-constexpr auto& find(Node& node LB);
-
-template <class Tuple>
-constexpr auto& find_in(Tuple& children) { return find(std::get<0>(children)); }
-
-template <class Node>
-constexpr auto& find(Node& node LB2) {
-    if constexpr (requires { node.children; }) return find_in(node.children);
-    else return node;
-}
-
 struct Leaf { int value = 0; };
-struct Branch { std::tuple<Leaf> children; };
+struct Pair { Leaf first; Leaf second; };
+
+// The same reference into the same argument, once through std::get and once by member access.
+const Leaf& through_get(const std::tuple<Leaf, Leaf>& t LB) { return std::get<0>(t); }
+const Leaf& through_member(const Pair& p LB) { return p.first; }
 
 int main() {
-    Branch b;
-    return find(b).value;
+    const std::tuple<Leaf, Leaf> t{};
+    const Pair p{};
+    return through_get(t).value + through_member(p).value;
 }
 ```
 
 ```
 F="-std=c++23 -Wlifetime-safety -Wlifetime-safety-suggestions -Wlifetime-safety-lifetimebound-violation -fsyntax-only"
-clang++ $F -DLB= -DLB2= clang_2_suggest_then_cannot_verify.cpp
-clang++ $F "-DLB=[[clang::lifetimebound]]" -DLB2= clang_2_suggest_then_cannot_verify.cpp
-clang++ $F -DLB= "-DLB2=[[clang::lifetimebound]]" clang_2_suggest_then_cannot_verify.cpp
-clang++ $F "-DLB=[[clang::lifetimebound]]" "-DLB2=[[clang::lifetimebound]]" clang_2_suggest_then_cannot_verify.cpp
+clang++ $F -DLB= clang_2_get_not_lifetimebound.cpp
+clang++ $F "-DLB=[[clang::lifetimebound]]" clang_2_get_not_lifetimebound.cpp
 ```
 
-- Without the attribute: `warning: parameter in intra-TU function should be marked [[clang::lifetimebound]] [-Wlifetime-safety-intra-tu-suggestions]`
-- With it on the declaration, the definition, or both: `warning: could not verify that the return value can be lifetime bound to 'node' [-Wlifetime-safety-lifetimebound-violation]`
+- Without the attribute: `8:41: warning: parameter in intra-TU function should be marked [[clang::lifetimebound]] [-Wlifetime-safety-intra-tu-suggestions]`,
+  for `through_member` only. Nothing is said about `through_get`.
+- With it: `7:57: warning: could not verify that the return value can be lifetime bound to 't' [-Wlifetime-safety-lifetimebound-violation]`,
+  for `through_get` only. `through_member` verifies.
 
-**Expected:** one or the other. The function returns `node` itself or, through `find_in`, a reference to a member
-of a member of `node`, so the attribute is correct and should verify. As it is, no version of this code builds
-clean with both groups on. The call through a forward-declared template seems to be what the verifier cannot
-follow.
+**Expected:** the two functions do the same thing, and both should verify. libstdc++'s `std::get` (and `<tuple>` as
+a whole) carries no `[[clang::lifetimebound]]`, so clang++ cannot see that `std::get<0>(t)` refers into `t`, and every
+function that returns a reference through it can neither be marked nor be left unmarked under `-Werror`: the
+suggestion is missed, and the attribute, once written, cannot be verified.
 
-A second case, not yet cut down: a class template's constructor, `Button(CheckedText caption, OnClick on_click)`,
-that moves `on_click` (a lambda's type) into a member gets the same suggest-then-cannot-verify pair.
+**Asking for:** libstdc++ to mark `std::get` for `tuple`, `pair`, `array` and `variant` (and `std::get_if`) with
+`[[clang::lifetimebound]]` when the compiler is clang++, so that clang++'s lifetime analysis can follow it. (libc++ was
+not tested here.)
 
-**What we tested:** with every `[[clang::lifetimebound]]` clang++ 23.1 asked for added to jCppGUI (121, in a
-scratch copy), clang++ checked every caller and found no dangling anywhere; these two places are all that stood
-between it and a clean build.
+**What we did:** jCppGUI walked a widget's children with `std::get`, and every `[[clang::lifetimebound]]` above it in
+the walk could not be verified: 1166 warnings, from two lines, one per instantiation. The children are now plain
+structs reached by member access, and with every `[[clang::lifetimebound]]` clang++ 23.1 asked for written (145 in
+jCppGUI, 14 in jString), clang++ verifies all of them and finds no dangling anywhere.
+
+An earlier version of this report blamed a forward-declared template. That was wrong: the same forward declaration
+verifies once `std::get` is out of the path.
 
 ---
 
@@ -142,8 +141,9 @@ warning: temporary whose address is used as value of local variable 'v' will be 
 
 **Asking for:** g++ support for `lifetimebound`, as `[[gnu::lifetimebound]]` or by accepting
 `[[clang::lifetimebound]]`, so that `-Wdangling-reference` can use it. Today a project that builds with `-Werror`
-on both compilers cannot use the attribute at all without a macro or `-Wno-attributes=clang::lifetimebound`, so
-clang++'s check is lost on all code that must also build with g++.
+on both compilers cannot use the attribute at all without a macro or `-Wno-attributes=clang::lifetimebound`.
+jCppGUI and jString now pass that flag to g++: g++ accepts the attribute and still rejects any other or misspelled
+`clang::` one, but checks nothing with it, so on g++ the dangling view above still goes unreported.
 
 ---
 
@@ -212,3 +212,54 @@ error under `-Werror`. Code that builds with both compilers and every warning an
 that stops `-Wcovered-switch-default` at that switch only, and ideally a matching proposal for a standard attribute so
 that g++ would accept it too. Until then jCppGUI and jString keep `-Wswitch-enum` and `-Wswitch-default` and turn off
 `-Wcovered-switch-default`, with the reason beside the flag.
+
+---
+
+## 5. clang++: one template parameter, lifetimebound asked for by one instantiation and unverifiable in another
+
+**Compiler:** clang version 23.1.5 (Fedora 23.1.5-2.fc45)
+
+Save as `clang_5_template_attribute_shared.cpp`:
+
+```cpp
+#include <utility>
+
+template <class OnClick>
+class Button {
+public:
+    constexpr explicit Button(OnClick on_click LB) : on_click_{std::move(on_click)} {}
+    constexpr void click() { on_click_(); }
+
+private:
+    OnClick on_click_;
+};
+
+int main() {
+    int clicks = 0;
+    Button counts{[&clicks] { ++clicks; }};  // keeps a reference: the attribute is asked for
+    Button quiet{[] {}};                     // keeps none: the attribute cannot be verified
+    counts.click();
+    quiet.click();
+    return clicks - 1;
+}
+```
+
+```
+F="-std=c++23 -Wlifetime-safety -Wlifetime-safety-suggestions -Wlifetime-safety-lifetimebound-violation -fsyntax-only"
+clang++ $F -DLB= clang_5_template_attribute_shared.cpp
+clang++ $F "-DLB=[[clang::lifetimebound]]" clang_5_template_attribute_shared.cpp
+```
+
+- Without the attribute: `6:47: warning: parameter in intra-TU constructor should be marked [[clang::lifetimebound]] [-Wlifetime-safety-intra-tu-constructor-suggestions]`
+- With it: `6:48: warning: could not verify that the return value can be lifetime bound to 'on_click' [-Wlifetime-safety-lifetimebound-violation]`
+
+With only `counts`, the attribute verifies. With only `quiet`, nothing is asked for.
+
+**Expected:** an attribute on a template's parameter is one attribute for every instantiation, so the suggestion and
+the check should agree across them: either not report an instantiation whose type keeps no reference (there is
+nothing for the attribute to bind, so it is not wrong there), or not suggest the attribute unless every instantiation
+in the translation unit can carry it. As it is, a template used with both kinds of type cannot build clean either way.
+
+**What we did:** jCppGUI's `Button` takes its `on_click` by `OnClick&&` and by `const OnClick&` instead of by value.
+For a reference parameter clang++ asks for nothing, and every button builds clean.
+
