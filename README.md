@@ -199,24 +199,32 @@ mistake is taken out.
 ## How fast
 
 Timed with `bench/bench_string.cpp` on the host (Core Ultra 7 265, g++ 16, one core, release flags with the
-hardening), against the packed jString it replaced (commit 8d39622) and `std::string`:
+hardening, every VM off). Each Type makes text from its own units. `-`: Ascii cannot hold the mixed text.
 
-| Job | `std::string` | packed jString | jString (cells) |
-|---|---|---|---|
-| 1,024 `at(n)` on 18 bytes of mixed text | 3.2 us | 18.9 us | 0.5 us |
-| 1,024 `at(n)` on a view of 4 KiB of mixed text | 952 us | 218 us | 0.4 us |
-| 1,024 substrings of 100 code points, 4 KiB mixed | 948 us | 1.1 us | 0.5 us |
-| Replace one code point in 4 KiB mixed | 1.1 us | 2.1 us | 0.12 us |
-| Count the code points of a view of 4 KiB mixed | 500 ns | 349 ns | 0.2 ns |
-| Append 18 bytes of mixed text, 10,000 times | 17 us | 207 us | 59 us |
-| Make from 4 KiB of mixed text | 30 ns | 4.4 us | 4.5 us |
-| Make from 4 KiB of ASCII | 30 ns | 0.44 us | 0.57 us |
-| Pack 4 KiB of mixed text back to UTF-8 | (a copy, 24 ns) | (none needed) | 2.0 us |
-| Search, compare, hash 4 KiB | 16, 25, 384 ns | the same | about 3 times: 48, 61, 1171 ns |
+| Job | `std::string` | Ascii | UTF8Packed | UTF8Full | UTF16 | UTF32 |
+|---|---|---|---|---|---|---|
+| 1,024 `at(n)`, 4 KiB mixed | 945 us (walks) | - | 2990 us | 0.83 us | 2100 us | 0.34 us |
+| 1,024 substrings of 100 code points, 4 KiB mixed | 977 us | - | 3098 us | 0.42 us | 2207 us | 0.35 us |
+| Replace one code point, 4 KiB mixed | 1.05 us | - | 3.9 us | 0.13 us | 2.8 us | 0.13 us |
+| Count code points, 4 KiB mixed | 509 ns | - | 356 ns | 0.1 ns | 915 ns | 0.1 ns |
+| Make from 4 KiB of ASCII | 45 ns | 280 ns | 284 ns | 632 ns | 432 ns | 633 ns |
+| Make from 4 KiB mixed | 37 ns | - | 2.7 us | 5.1 us | 0.66 us | 0.49 us |
+| Copy 4 KiB mixed | 48 ns | - | 44 ns | 79 ns | 53 ns | 82 ns |
+| Append 18 bytes mixed, 10,000 times | 17.5 us | - | 42 us | 57 us | 49 us | 63 us |
+| UTF-8 of 4 KiB mixed, into a buffer | 24 ns (a copy) | - | 24 ns | 2.2 us | 6.7 us | 2.4 us |
+| Contains, 4 KiB mixed, not there | 17 ns | - | 17 ns | 49 ns | 517 ns | 504 ns |
+| Compare equal, 4 KiB | 26 ns | - | 27 ns | 78 ns | 34 ns | 62 ns |
+| Hash, 4 KiB | 389 ns | - | 388 ns | 1187 ns | 605 ns | 1186 ns |
+| Kept size of 4 KiB mixed | 4097 B | - | 4097 B | 12300 B | 6320 B | 12300 B |
 
-Finding a code point by position, counting and replacing are much faster. Work that reads every byte (search,
-compare, hash, copy) is about 3 times slower, because there are about 3 times the bytes. Text going out is packed,
-which `std::string` never has to do. A `jstr::String` is 96 bytes; `std::string` is 32.
+How to read it:
+- **By position** (`at`, `substring`, `replace`, counting), the Types found by multiplying (Ascii, UTF8Full, UTF32)
+  are thousands of times faster than walking, whether `std::string` or UTF8Packed and UTF16 do the walking.
+- **Passing through** (copy, compare, search, hash, out as UTF-8), UTF8Packed is as fast as `std::string`. UTF8Full
+  reads about 3 times the bytes; UTF16 and UTF32 search one unit at a time.
+- **Coming in**, every Type checks every unit, which `std::string` never does. UTF16 and UTF32 come in fastest
+  from their own units; UTF-8 text with wide code points is the slowest to check.
+- A `jstr::String` is 96 bytes in every Type (64 held inside); `std::string` is 32.
 
 ## Building
 
@@ -230,4 +238,5 @@ From `Lin/v001`: `bash bsir.sh` installs what is missing, then builds and tests 
 | `gcc-asan` | AddressSanitizer and UndefinedBehaviorSanitizer |
 | `gcc-release`, `clang-release` | Optimized, with the hardening: for reading the benchmark's numbers |
 
-Tested on Fedora 45 (gcc 16, clang 23) and Linux Mint 22 (gcc 15, clang 21).
+Tested on Fedora 45 (gcc 16, clang 23), RHEL 9 and 10 (gcc-toolset 16, clang 22), and Linux Mint 22 and Zorin 18
+(gcc 15, clang 21).
