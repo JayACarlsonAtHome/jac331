@@ -14,8 +14,8 @@
 
 namespace jstr_test {
 
-using jstr::StringView;
-using jstr::Type;
+using jString::StringView;
+using jString::Type;
 
 template <Type T>
 using unit_t = typename StringView<T>::unit;
@@ -40,11 +40,11 @@ template <Type T>
     if constexpr (std::is_same_v<unit_t<T>, char>) {
         return std::string{utf8};
     } else {
-        using codec = std::conditional_t<T == Type::UTF16, jstr::Utf16, jstr::Utf32>;
+        using codec = std::conditional_t<T == Type::UTF16, jString::Utf16, jString::Utf32>;
         units_t<T> out;
         std::size_t at = 0;
         while (at < utf8.size()) {
-            const jstr::Scan scan = jstr::Utf8::scan(utf8.substr(at));
+            const jString::Scan scan = jString::Utf8::scan(utf8.substr(at));
             std::array<unit_t<T>, codec::max_units> one{};
             const std::size_t length = codec::encode(scan.code_point, one);
             out.append(one.data(), length);

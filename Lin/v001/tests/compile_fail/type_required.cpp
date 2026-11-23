@@ -4,9 +4,9 @@
 
 int main() {
 #ifdef JSTR_BREAK
-    const jstr::String<> text;
+    const jString::String<> text;
 #else
-    const jstr::String<jstr::Type::UTF8Full> text;
+    const jString::String<jString::Type::UTF8Full> text;
 #endif
     static_cast<void>(text);
 }

@@ -29,7 +29,7 @@
 #include "cells.hpp"
 #include "encoding.hpp"
 
-namespace jstr::inline v001 {
+namespace jString::inline v001 {
 
 enum class Type : unsigned char { Ascii, UTF8Packed, UTF8Full, UTF16, UTF32 };
 
@@ -371,4 +371,4 @@ template <Type T>
 
 }  // namespace detail
 
-}  // namespace jstr::inline v001
+}  // namespace jString::inline v001

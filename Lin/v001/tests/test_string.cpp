@@ -24,15 +24,15 @@
 
 namespace {
 
-using jstr::CodePointCount;
-using jstr::CodePointIndex;
-using jstr::CodePointNumber;
-using jstr::EncodingError;
-using jstr::FixedString;
-using jstr::String;
-using jstr::StringView;
-using jstr::Type;
-using namespace jstr::literals;
+using jString::CodePointCount;
+using jString::CodePointIndex;
+using jString::CodePointNumber;
+using jString::EncodingError;
+using jString::FixedString;
+using jString::String;
+using jString::StringView;
+using jString::Type;
+using namespace jString::literals;
 using jstr_test::name_of;
 using jstr_test::packed;
 using jstr_test::runtime_units;
@@ -42,7 +42,7 @@ using jstr_test::runtime_units;
     std::vector<std::string_view> all;
     std::size_t at = 0;
     while (at < units.size()) {
-        const std::size_t length = jstr::Utf8::scan(units.substr(at)).length;
+        const std::size_t length = jString::Utf8::scan(units.substr(at)).length;
         all.push_back(units.substr(at, length));
         at += length;
     }
@@ -385,7 +385,8 @@ int main() {
 
     // --- UTF8Full: a code point to a 4-byte cell, its bytes then zeros, the same on every machine ---
     check.context("UTF8Full: ");
-    static_assert(jstr::Utf8::cell_units == 4);
+    static_assert(jString::Utf8::cell_units == 4);
+    static_assert(std::is_same_v<jstr::String<jstr::Type::UTF16>, jString::String<jString::Type::UTF16>>, "jstr is the short name of jString");
     const auto cells = String<Type::UTF8Full>::from(std::string_view{"\xC3\xA9\0x", 4});
     check(cells->count_code_points() == 3 && cells->size_packed() == 4, "three cells, four bytes packed");
     check(!String<Type::UTF8Full>{"éx"_js}.contains(*cells->at(CodePointIndex{1})), "U+0000 never matched in the zeros after é");

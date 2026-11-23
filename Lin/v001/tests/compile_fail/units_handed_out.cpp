@@ -4,10 +4,10 @@
 
 #include "jString/v001/jstring.hpp"
 
-using namespace jstr::literals;
+using namespace jString::literals;
 
 int main() {
-    const jstr::StringView<jstr::Type::UTF8Full> text = "caf\xC3\xA9"_js;
+    const jString::StringView<jString::Type::UTF8Full> text = "caf\xC3\xA9"_js;
 #ifdef JSTR_BREAK
     const auto bytes = text.units();
 #else

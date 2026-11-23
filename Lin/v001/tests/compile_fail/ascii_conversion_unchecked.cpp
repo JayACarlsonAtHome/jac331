@@ -2,14 +2,14 @@
 // Purpose: Converting to Ascii can fail, so it gives a std::expected, never a String that quietly lost text.
 #include "jString/v001/jstring.hpp"
 
-using namespace jstr::literals;
+using namespace jString::literals;
 
 int main(int count, char**) {
-    const jstr::String<jstr::Type::UTF8Packed> text = count > 1 ? jstr::String<jstr::Type::UTF8Packed>{"caf\xC3\xA9"_js} : jstr::String<jstr::Type::UTF8Packed>{"cafe"_js};
+    const jString::String<jString::Type::UTF8Packed> text = count > 1 ? jString::String<jString::Type::UTF8Packed>{"caf\xC3\xA9"_js} : jString::String<jString::Type::UTF8Packed>{"cafe"_js};
 #ifdef JSTR_BREAK
-    const jstr::String<jstr::Type::Ascii> plain = jstr::convert<jstr::Type::Ascii>(text);
+    const jString::String<jString::Type::Ascii> plain = jString::convert<jString::Type::Ascii>(text);
 #else
-    const jstr::String<jstr::Type::Ascii> plain = jstr::convert<jstr::Type::Ascii>(text).value_or(jstr::String<jstr::Type::Ascii>{});
+    const jString::String<jString::Type::Ascii> plain = jString::convert<jString::Type::Ascii>(text).value_or(jString::String<jString::Type::Ascii>{});
 #endif
     static_cast<void>(plain);
 }

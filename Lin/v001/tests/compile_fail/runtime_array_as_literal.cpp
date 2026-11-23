@@ -7,9 +7,9 @@
 int main(int count, char**) {
     char filled[3]{static_cast<char>('a' + count), 'b', '\0'};
 #ifdef JSTR_BREAK
-    const jstr::StringView<jstr::Type::UTF8Full> view = filled;
+    const jString::StringView<jString::Type::UTF8Full> view = filled;
 #else
-    const auto view = jstr::String<jstr::Type::UTF8Full>::from(std::string_view{filled});
+    const auto view = jString::String<jString::Type::UTF8Full>::from(std::string_view{filled});
 #endif
     static_cast<void>(view);
 }

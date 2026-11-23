@@ -2,15 +2,15 @@
 // Purpose: IndexBase is a type of its own: it is not a number either, and never becomes one without being asked.
 #include "jString/v001/jstring.hpp"
 
-using namespace jstr::literals;
+using namespace jString::literals;
 
 int main() {
-    const jstr::String<jstr::Type::UTF8Full> text = "This is a test"_js;
+    const jString::String<jString::Type::UTF8Full> text = "This is a test"_js;
 #ifdef JSTR_BREAK
-    const int number = jstr::IndexBase::one_based;
+    const int number = jString::IndexBase::one_based;
     static_cast<void>(number);
 #else
-    const auto number = static_cast<int>(jstr::IndexBase::one_based);
+    const auto number = static_cast<int>(jString::IndexBase::one_based);
     static_cast<void>(number);
 #endif
     static_cast<void>(text);

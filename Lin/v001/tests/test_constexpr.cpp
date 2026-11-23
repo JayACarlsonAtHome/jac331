@@ -11,23 +11,23 @@
 
 namespace {
 
-using jstr::CodePointCount;
-using jstr::CodePointIndex;
-using jstr::CodePointNumber;
-using jstr::EncodingError;
-using jstr::Scan;
-using jstr::String;
-using jstr::StringView;
-using jstr::Type;
-using jstr::Utf8;
-using namespace jstr::literals;
+using jString::CodePointCount;
+using jString::CodePointIndex;
+using jString::CodePointNumber;
+using jString::EncodingError;
+using jString::Scan;
+using jString::String;
+using jString::StringView;
+using jString::Type;
+using jString::Utf8;
+using namespace jString::literals;
 
 static_assert(Utf8::scan("\xF4\x8F\xBF\xBF") == Scan{U'\U0010FFFF', 4, true});
-static_assert(Utf8::scan("\xED\xA0\x80") == Scan{jstr::replacement_character, 1, false});
-static_assert(Utf8::scan("\xE1\x80") == Scan{jstr::replacement_character, 2, false});
-static_assert(jstr::first_invalid<Utf8>("ab\xC0") == EncodingError{2});
-static_assert(jstr::Utf16::scan(u"\U0001F600") == Scan{U'\U0001F600', 2, true});
-static_assert(jstr::CodePointNumber{7}.skipped() == 6U && jstr::CodePointIndex{6}.skipped() == 6U && !jstr::CodePointNumber{0}.skipped());
+static_assert(Utf8::scan("\xED\xA0\x80") == Scan{jString::replacement_character, 1, false});
+static_assert(Utf8::scan("\xE1\x80") == Scan{jString::replacement_character, 2, false});
+static_assert(jString::first_invalid<Utf8>("ab\xC0") == EncodingError{2});
+static_assert(jString::Utf16::scan(u"\U0001F600") == Scan{U'\U0001F600', 2, true});
+static_assert(jString::CodePointNumber{7}.skipped() == 6U && jString::CodePointIndex{6}.skipped() == 6U && !jString::CodePointNumber{0}.skipped());
 
 // What every Type does, while compiling: views of literals, Strings made, grown past their inside, moved, cut and
 // replaced, every one freeing all it took.
@@ -56,8 +56,8 @@ template <Type T>
     target += target;
     good = good && target == "abab"_js;
     good = good && ("x"_js.view<T>() + "y"_js) + String<T>{"z"_js} == "xyz"_js;
-    jstr::FixedString<T, 3> fixed;
-    good = good && fixed.assign_lossy(typename jstr::FixedString<T, 3>::lossy_view{}) == 0 && fixed.empty();
+    jString::FixedString<T, 3> fixed;
+    good = good && fixed.assign_lossy(typename jString::FixedString<T, 3>::lossy_view{}) == 0 && fixed.empty();
     return good;
 }
 static_assert(every_type<Type::Ascii>());
@@ -81,8 +81,8 @@ template <Type T>
     good = good && text.substring(CodePointNumber{2}, CodePointCount{3}) == View{"éb日"_js};
     const std::vector<char> bytes = "aé\U0001F600"_js.view<T>().to_utf8();
     good = good && bytes == std::vector<char>{'a', '\xC3', '\xA9', '\xF0', '\x9F', '\x98', '\x80'};
-    good = good && jstr::convert<Type::UTF16>(text) == jstr::convert<Type::UTF16>(jstr::convert<Type::UTF32>(text));
-    good = good && jstr::convert<Type::Ascii>(View{"é"_js}).error() == jstr::ConversionError{0, U'é'};
+    good = good && jString::convert<Type::UTF16>(text) == jString::convert<Type::UTF16>(jString::convert<Type::UTF32>(text));
+    good = good && jString::convert<Type::Ascii>(View{"é"_js}).error() == jString::ConversionError{0, U'é'};
     return good;
 }
 static_assert(unicode_type<Type::UTF8Packed>());
@@ -96,7 +96,7 @@ template <Type T>
     bool good = String<T>::from("\x80").error() == EncodingError{0} && String<T>::from("ok\xFF").error() == EncodingError{2};
     good = good && String<T>::from_lossy("a\xF0\x80\x80" "b") == "a���" "b"_js;
     good = good && !String<T>::from(std::string_view{"a\0b", 3})->to_c_string().has_value();
-    jstr::FixedString<T, 3> fixed;
+    jString::FixedString<T, 3> fixed;
     good = good && fixed.assign_lossy("\xC3\xA9\xFFxyz") == 3 && fixed == "é�x"_js;
     return good;
 }

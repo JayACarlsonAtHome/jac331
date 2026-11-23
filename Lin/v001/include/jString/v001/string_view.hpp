@@ -28,7 +28,7 @@
 #include "encoding.hpp"
 #include "type.hpp"
 
-namespace jstr::inline v001 {
+namespace jString::inline v001 {
 
 // How many bytes a String holds inside itself before its text goes to the heap: one cache line.
 inline constexpr std::size_t default_inline_bytes = 64;
@@ -363,7 +363,7 @@ inline constexpr LiteralKept<T, literal_size<T, L>()> literal_kept{L.text()};
 
 // Text known at compile time, checked then, and living as long as the program: what "text"_js makes. It is text of
 // every Type it fits (Ascii only when it is ASCII), made while compiling for each Type it is used as. A String is made
-// from one without asking (jstr::String<jstr::Type::UTF16> s = "text"_js;), and a function taking a StringView takes
+// from one without asking (jString::String<jString::Type::UTF16> s = "text"_js;), and a function taking a StringView takes
 // one as it is. A plain "text" is not text: nothing checked it.
 template <detail::LiteralUnits L>
 class Literal {
@@ -397,9 +397,9 @@ template <detail::LiteralUnits L>
 
 }  // namespace literals
 
-}  // namespace jstr::inline v001
+}  // namespace jString::inline v001
 
-template <jstr::Type T>
-struct std::hash<jstr::StringView<T>> {
-    [[nodiscard]] std::size_t operator()(jstr::StringView<T> text) const noexcept { return std::hash<jstr::detail::units_view<T>>{}(text.view()); }
+template <jString::Type T>
+struct std::hash<jString::StringView<T>> {
+    [[nodiscard]] std::size_t operator()(jString::StringView<T> text) const noexcept { return std::hash<jString::detail::units_view<T>>{}(text.view()); }
 };

@@ -42,7 +42,7 @@
 #include "string_view.hpp"
 #include "type.hpp"
 
-namespace jstr::inline v001 {
+namespace jString::inline v001 {
 
 template <Type T, std::size_t InlineBytes>
 class String {
@@ -473,35 +473,35 @@ inline constexpr bool sealed = sealed_one<String<T>> && sealed_one<StringView<T>
 static_assert(detail::sealed<Type::Ascii> && detail::sealed<Type::UTF8Packed> && detail::sealed<Type::UTF8Full> && detail::sealed<Type::UTF16> &&
               detail::sealed<Type::UTF32>);
 
-}  // namespace jstr::inline v001
+}  // namespace jString::inline v001
 
-template <jstr::Type T, std::size_t N>
-struct std::hash<jstr::String<T, N>> {
-    [[nodiscard]] std::size_t operator()(const jstr::String<T, N>& text) const noexcept { return std::hash<jstr::StringView<T>>{}(text.view()); }
+template <jString::Type T, std::size_t N>
+struct std::hash<jString::String<T, N>> {
+    [[nodiscard]] std::size_t operator()(const jString::String<T, N>& text) const noexcept { return std::hash<jString::StringView<T>>{}(text.view()); }
 };
 
 // std::format("{}", text), with every option a std::string_view takes, given the text as UTF-8 whatever its Type.
-template <jstr::Type T>
-struct std::formatter<jstr::StringView<T>, char> : std::formatter<std::string_view, char> {
+template <jString::Type T>
+struct std::formatter<jString::StringView<T>, char> : std::formatter<std::string_view, char> {
     template <class Context>
-    auto format(jstr::StringView<T> text, Context& context) const {
+    auto format(jString::StringView<T> text, Context& context) const {
         const std::vector<char> utf8 = text.to_utf8();
         return std::formatter<std::string_view, char>::format(std::string_view{utf8.begin(), utf8.end()}, context);
     }
 };
 
-template <jstr::Type T, std::size_t N>
-struct std::formatter<jstr::String<T, N>, char> : std::formatter<jstr::StringView<T>, char> {
+template <jString::Type T, std::size_t N>
+struct std::formatter<jString::String<T, N>, char> : std::formatter<jString::StringView<T>, char> {
     template <class Context>
-    auto format(const jstr::String<T, N>& text, Context& context) const {
-        return std::formatter<jstr::StringView<T>, char>::format(text.view(), context);
+    auto format(const jString::String<T, N>& text, Context& context) const {
+        return std::formatter<jString::StringView<T>, char>::format(text.view(), context);
     }
 };
 
-template <jstr::Type T, std::size_t N>
-struct std::formatter<jstr::FixedString<T, N>, char> : std::formatter<jstr::StringView<T>, char> {
+template <jString::Type T, std::size_t N>
+struct std::formatter<jString::FixedString<T, N>, char> : std::formatter<jString::StringView<T>, char> {
     template <class Context>
-    auto format(const jstr::FixedString<T, N>& text, Context& context) const {
-        return std::formatter<jstr::StringView<T>, char>::format(text.view(), context);
+    auto format(const jString::FixedString<T, N>& text, Context& context) const {
+        return std::formatter<jString::StringView<T>, char>::format(text.view(), context);
     }
 };

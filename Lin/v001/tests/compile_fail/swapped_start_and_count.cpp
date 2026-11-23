@@ -2,15 +2,15 @@
 // Purpose: A start and a count are different types: swapping them must not compile.
 #include "jString/v001/jstring.hpp"
 
-using namespace jstr::literals;
+using namespace jString::literals;
 
 int main() {
-    const jstr::String<jstr::Type::UTF8Full> text = "This is a test"_js;
+    const jString::String<jString::Type::UTF8Full> text = "This is a test"_js;
 #ifdef JSTR_BREAK
-    const auto piece = text.substring(jstr::CodePointCount{4}, jstr::CodePointIndex{0});
+    const auto piece = text.substring(jString::CodePointCount{4}, jString::CodePointIndex{0});
     static_cast<void>(piece);
 #else
-    const auto piece = text.substring(jstr::CodePointIndex{0}, jstr::CodePointCount{4});
+    const auto piece = text.substring(jString::CodePointIndex{0}, jString::CodePointCount{4});
     static_cast<void>(piece);
 #endif
     static_cast<void>(text);

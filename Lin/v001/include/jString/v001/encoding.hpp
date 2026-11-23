@@ -17,7 +17,7 @@
 #include <string_view>
 #include <type_traits>
 
-namespace jstr::inline v001 {
+namespace jString::inline v001 {
 
 // The first code point of some units. When valid is false, length is how many units the bad sequence takes (its
 // maximal subpart, as the Unicode Standard counts it: chapter 3, "U+FFFD Substitution of Maximal Subparts"), and
@@ -325,4 +325,7 @@ template <Encoding E>
     return checked.error();
 }
 
-}  // namespace jstr::inline v001
+}  // namespace jString::inline v001
+
+// The short name: jstr::String<jstr::Type::UTF8Packed> is jString::String<jString::Type::UTF8Packed>.
+namespace jstr = jString;

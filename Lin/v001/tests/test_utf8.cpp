@@ -14,11 +14,11 @@
 
 namespace {
 
-using jstr::EncodingError;
-using jstr::Scan;
-using jstr::Utf8;
+using jString::EncodingError;
+using jString::Scan;
+using jString::Utf8;
 
-constexpr char32_t bad = jstr::replacement_character;
+constexpr char32_t bad = jString::replacement_character;
 
 [[nodiscard]] Scan scan(std::string_view units) { return Utf8::scan(units); }
 
@@ -49,7 +49,7 @@ constexpr char32_t bad = jstr::replacement_character;
 }
 
 // The same code point as jString's own encode writes it.
-[[nodiscard]] std::string encoded_by_jstr(std::uint32_t code_point) {
+[[nodiscard]] std::string encoded_by_jstring(std::uint32_t code_point) {
     std::array<char, 4> bytes{};
     const std::size_t length = Utf8::encode(static_cast<char32_t>(code_point), bytes);
     return std::string{bytes.data(), length};
@@ -100,12 +100,12 @@ int main() {
     check(scan("\xF1\x80\x80\xC0") == Scan{bad, 3, false}, "a four-byte sequence broken at the fourth");
 
     // The first bad sequence in longer text.
-    check(jstr::first_invalid<Utf8>("") == std::nullopt, "empty text is valid");
-    check(jstr::first_invalid<Utf8>("plain ASCII") == std::nullopt, "ASCII is valid");
-    check(jstr::first_invalid<Utf8>("caf\xC3\xA9 \xF0\x9F\x98\x80") == std::nullopt, "mixed lengths are valid");
-    check(jstr::first_invalid<Utf8>("ab\x80" "cd") == EncodingError{2}, "found at its offset");
-    check(jstr::first_invalid<Utf8>("\xC3\xA9\xC3") == EncodingError{2}, "found after a valid two-byte sequence");
-    check(jstr::first_invalid<Utf8>("\xED\xA0\x80\x41") == EncodingError{0}, "a surrogate at the start");
+    check(jString::first_invalid<Utf8>("") == std::nullopt, "empty text is valid");
+    check(jString::first_invalid<Utf8>("plain ASCII") == std::nullopt, "ASCII is valid");
+    check(jString::first_invalid<Utf8>("caf\xC3\xA9 \xF0\x9F\x98\x80") == std::nullopt, "mixed lengths are valid");
+    check(jString::first_invalid<Utf8>("ab\x80" "cd") == EncodingError{2}, "found at its offset");
+    check(jString::first_invalid<Utf8>("\xC3\xA9\xC3") == EncodingError{2}, "found after a valid two-byte sequence");
+    check(jString::first_invalid<Utf8>("\xED\xA0\x80\x41") == EncodingError{0}, "a surrogate at the start");
 
     // decode() and length_of(), which trust the text, against scan(), which checks it: every code point there is.
     std::size_t disagree = 0;
@@ -116,7 +116,7 @@ int main() {
         const std::string_view units{std::span{bytes}.first(length)};
         const Scan checked = scan(units);
         if (!checked.valid || checked.length != length || checked.code_point != static_cast<char32_t>(c) ||
-            Utf8::decode(units) != static_cast<char32_t>(c) || Utf8::length_of(units.front()) != length || encoded_by_jstr(c) != units) {
+            Utf8::decode(units) != static_cast<char32_t>(c) || Utf8::length_of(units.front()) != length || encoded_by_jstring(c) != units) {
             ++disagree;
         }
     }

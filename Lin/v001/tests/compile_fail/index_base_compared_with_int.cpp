@@ -2,18 +2,18 @@
 // Purpose: IndexBase is a type of its own: comparing it with a number must not compile.
 #include "jString/v001/jstring.hpp"
 
-using namespace jstr::literals;
+using namespace jString::literals;
 
 // The base is chosen at run time, from argc, which no compiler can know.
 int main(int argc, char**) {
-    const jstr::String<jstr::Type::UTF8Full> text = "This is a test"_js;
+    const jString::String<jString::Type::UTF8Full> text = "This is a test"_js;
 #ifdef JSTR_BREAK
-    const bool same = jstr::IndexBase::one_based == 1;
+    const bool same = jString::IndexBase::one_based == 1;
     static_cast<void>(same);
     static_cast<void>(argc);
 #else
-    const jstr::IndexBase base = argc > 1 ? jstr::IndexBase::zero_based : jstr::IndexBase::one_based;
-    const bool same = base == jstr::IndexBase::one_based;
+    const jString::IndexBase base = argc > 1 ? jString::IndexBase::zero_based : jString::IndexBase::one_based;
+    const bool same = base == jString::IndexBase::one_based;
     static_cast<void>(same);
 #endif
     static_cast<void>(text);

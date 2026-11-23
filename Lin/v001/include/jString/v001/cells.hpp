@@ -20,7 +20,7 @@
 
 #include "encoding.hpp"
 
-namespace jstr::inline v001::detail {
+namespace jString::inline v001::detail {
 
 // Whether cells are 4 bytes on a machine with a known byte order: then 16 one-unit code points are spread and packed as
 // 16 4-byte values, which compilers make into a few vector instructions, not 64 single bytes.
@@ -303,4 +303,4 @@ template <Encoding E>
     }
 }
 
-}  // namespace jstr::inline v001::detail
+}  // namespace jString::inline v001::detail

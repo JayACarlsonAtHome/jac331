@@ -6,6 +6,8 @@ wrong. A mistake is a compile error where it can be, and an empty answer (`std::
 can only be found at run time. It is never a wrong answer.
 
 Header-only: `#include "jString/v001/jstring.hpp"` from `Lin/v001/include`.
+Everything is in the namespace `jString`; `jstr` is a short name for it (`namespace jstr = jString;`), so
+`jstr::String<jstr::Type::UTF8Packed>` is the same type.
 
 ## Compiler reports
 
@@ -16,22 +18,22 @@ and so misses a dangling view that clang++ catches. Each is cut down to one smal
 
 ```cpp
 #include "jString/v001/jstring.hpp"
-using namespace jstr::literals;
-using jstr::Type;
+using namespace jString::literals;
+using jString::Type;
 
-jstr::String<Type::UTF8Full> data = "This is a test"_js;          // checked while compiling
-if (data.at(jstr::CodePointNumber{7}) == U's') { /* ... */ }      // the 7th code point, counted from 1
-auto word = data.substring(jstr::CodePointIndex{0}, jstr::CodePointCount{4});      // "This", counted from 0
-auto fixed = data.replace(jstr::CodePointNumber{1}, jstr::CodePointCount{4}, "That"_js);  // a new jString
+jString::String<Type::UTF8Full> data = "This is a test"_js;          // checked while compiling
+if (data.at(jString::CodePointNumber{7}) == U's') { /* ... */ }      // the 7th code point, counted from 1
+auto word = data.substring(jString::CodePointIndex{0}, jString::CodePointCount{4});      // "This", counted from 0
+auto fixed = data.replace(jString::CodePointNumber{1}, jString::CodePointCount{4}, "That"_js);  // a new jString
 
-auto from_file = jstr::String<Type::UTF8Packed>::from(bytes);   // std::expected: valid text, or where it first goes wrong
-auto shown = jstr::String<Type::UTF8Packed>::from_lossy(bytes); // each bad sequence made U+FFFD
+auto from_file = jString::String<Type::UTF8Packed>::from(bytes);   // std::expected: valid text, or where it first goes wrong
+auto shown = jString::String<Type::UTF8Packed>::from_lossy(bytes); // each bad sequence made U+FFFD
 std::vector<char> out = data.to_utf8();                         // out by name, as UTF-8, whatever the Type
 
-auto for_windows = jstr::convert<Type::UTF16>(data);            // another Type, by name; it cannot fail
-auto for_a_header = jstr::convert<Type::Ascii>(data);           // it can: std::expected, saying which code point
+auto for_windows = jString::convert<Type::UTF16>(data);            // another Type, by name; it cannot fail
+auto for_a_header = jString::convert<Type::Ascii>(data);           // it can: std::expected, saying which code point
 
-jstr::FixedString<Type::UTF8Full, 43> payload;  // at most 43 code points, all inside: no heap, no destructor
+jString::FixedString<Type::UTF8Full, 43> payload;  // at most 43 code points, all inside: no heap, no destructor
 payload.assign_lossy(bytes);                    // made U+FFFD where bad, cut after 43
 ```
 
@@ -50,7 +52,7 @@ payload.assign_lossy(bytes);                    // made U+FFFD where bad, cut af
 
 ## The five Types
 
-| `jstr::Type::` | Unit | One code point takes | Code point n is found by | Holds |
+| `jString::Type::` | Unit | One code point takes | Code point n is found by | Holds |
 |---|---|---|---|---|
 | `Ascii` | `char` | 1 byte | multiplying | U+0000 to U+007F only |
 | `UTF8Packed` | `char` | 1 to 4 bytes, as files hold it | walking the text | every code point |
@@ -119,7 +121,7 @@ Every code point takes one **cell** of 4 bytes: its UTF-8 bytes, then zeros.
 
 ## Text never leaves as units
 
-A `jstr::StringView` is never a `std::string_view`, `std::u16string_view`, `std::span` or pointer: no conversion
+A `jString::StringView` is never a `std::string_view`, `std::u16string_view`, `std::span` or pointer: no conversion
 exists, not even an explicit one, and `string.hpp` proves it with a `static_assert` in every build. Read as plain
 bytes, UTF8Full's zeros would look like text. Text leaves jString only by name:
 
@@ -134,10 +136,10 @@ bytes, UTF8Full's zeros would look like text. Text leaves jString only by name:
 
 | Call | Gives |
 |---|---|
-| `jstr::convert<To>(text)`, To not `Ascii` | `jstr::String<To>`: every Type holds every code point, so it cannot fail |
-| `jstr::convert<Type::Ascii>(text)` | `std::expected<jstr::String<Type::Ascii>, jstr::ConversionError>`: the error names the first code point above U+007F and its index |
-| `jstr::convert_lossy<Type::Ascii>(text)` | `jstr::String<Type::Ascii>`, each code point above U+007F made `?` |
-| `jstr::convert<To, InlineBytes>(text)` | the same, into a String with that much room inside |
+| `jString::convert<To>(text)`, To not `Ascii` | `jString::String<To>`: every Type holds every code point, so it cannot fail |
+| `jString::convert<Type::Ascii>(text)` | `std::expected<jString::String<Type::Ascii>, jString::ConversionError>`: the error names the first code point above U+007F and its index |
+| `jString::convert_lossy<Type::Ascii>(text)` | `jString::String<Type::Ascii>`, each code point above U+007F made `?` |
+| `jString::convert<To, InlineBytes>(text)` | the same, into a String with that much room inside |
 
 Converting between UTF8Packed and UTF8Full packs or spreads; Ascii to UTF8Packed is a copy; every other pair decodes and
 encodes each code point.
@@ -146,7 +148,7 @@ encodes each code point.
 
 | Decision | Why |
 |---|---|
-| The Type is a required template argument, an enum: `jstr::String<jstr::Type::UTF16>` | How text is kept decides what is fast. Naming it every time makes it a decision; a default would make it an accident |
+| The Type is a required template argument, an enum: `jString::String<jString::Type::UTF16>` | How text is kept decides what is fast. Naming it every time makes it a decision; a default would make it an accident |
 | Five Types, not one | Each is the best at something (see "When to use each"); one cannot be best at all of it |
 | UTF8Full's cell holds UTF-8 bytes, not the code point as a 32-bit number | Bytes in order read the same on every machine. UTF32 is there for when the number itself is wanted |
 | UTF16 and UTF32 in this machine's byte order | They are for handing to APIs on this machine, which expect its order |
@@ -154,8 +156,8 @@ encodes each code point.
 | A plain `"text"` is not text | Nothing checked it |
 | Text from outside always comes in through `String::from()` (or `from_lossy()`) | Each Type takes its own units: bytes, `char16_t` or `char32_t`. Checking and keeping is one pass |
 | No conversion between Types without `convert<To>()` | A UTF-16 string compared with a UTF-8 one would be comparing different units |
-| Up to 64 bytes held inside a `jstr::String` (one cache line), longer text in a `std::vector` | Most short text needs no heap. The place is worked out each time, never kept as a pointer, so a move cannot leave a pointer into the old String. `std::string`'s small-string buffer set off g++ 15's `-Wdangling-pointer`; this cannot |
-| `jstr::FixedString<T, N>`: at most N code points, all inside, room for the widest | Trivially copyable and destructible, and all zeros is the empty text: a block of them needs no construction, destruction or clearing |
+| Up to 64 bytes held inside a `jString::String` (one cache line), longer text in a `std::vector` | Most short text needs no heap. The place is worked out each time, never kept as a pointer, so a move cannot leave a pointer into the old String. `std::string`'s small-string buffer set off g++ 15's `-Wdangling-pointer`; this cannot |
+| `jString::FixedString<T, N>`: at most N code points, all inside, room for the widest | Trivially copyable and destructible, and all zeros is the empty text: a block of them needs no construction, destruction or clearing |
 | No `operator[]`; `at()` gives the code point as an `optional` view | Past the end is an empty answer, not a crash or a guess |
 | `CodePointIndex` (from 0) and `CodePointNumber` (from 1) are types, and `CodePointCount` is another | A plain number, a base, or a start and a count swapped do not compile |
 | Views from a temporary jString do not compile | A view into text that is about to be destroyed is a dangling pointer by another name |
@@ -167,11 +169,11 @@ encodes each code point.
 
 | Type | What it is |
 |---|---|
-| `jstr::String<T, InlineBytes = 64>` | Owned text: a value type that copies, moves (leaving the source empty), compares and hashes. Up to 64 bytes held inside it, with no heap |
-| `jstr::FixedString<T, N>` | Owned text of at most N code points, all inside: no heap, no destructor, all zeros is empty. For rows of a store |
-| `jstr::StringView<T>` | Borrowed text: a pointer and a size, 16 bytes. Keep a `jstr::String`, pass a `jstr::StringView` |
+| `jString::String<T, InlineBytes = 64>` | Owned text: a value type that copies, moves (leaving the source empty), compares and hashes. Up to 64 bytes held inside it, with no heap |
+| `jString::FixedString<T, N>` | Owned text of at most N code points, all inside: no heap, no destructor, all zeros is empty. For rows of a store |
+| `jString::StringView<T>` | Borrowed text: a pointer and a size, 16 bytes. Keep a `jString::String`, pass a `jString::StringView` |
 | `"..."_js` | Text checked while compiling, its units made then for each Type it is used as, which lives as long as the program |
-| `jstr::Type` | `Ascii`, `UTF8Packed`, `UTF8Full`, `UTF16`, `UTF32` |
+| `jString::Type` | `Ascii`, `UTF8Packed`, `UTF8Full`, `UTF16`, `UTF32` |
 | `CodePointPosition<IndexBase>` | A position counted in code points, from 0 (`CodePointIndex`, the default) or from 1 (`CodePointNumber`) |
 | `CodePointCount` | A length in code points, so that a start and a length cannot be swapped |
 | `IndexBase` | `zero_based` or `one_based`: a scoped enum, never a number |
@@ -183,7 +185,7 @@ encodes each code point.
 Each of these has a test in `Lin/v001/tests/compile_fail`. Each test also checks that the same file compiles once the
 mistake is taken out.
 
-- a jString with no Type: `jstr::String<>`
+- a jString with no Type: `jString::String<>`
 - text of two Types compared, or joined, without `convert<To>()`
 - a literal that is not ASCII as Ascii text
 - `convert<Type::Ascii>()`'s answer used as a String without checking it
@@ -224,7 +226,7 @@ How to read it:
   reads about 3 times the bytes; UTF16 and UTF32 search one unit at a time.
 - **Coming in**, every Type checks every unit, which `std::string` never does. UTF16 and UTF32 come in fastest
   from their own units; UTF-8 text with wide code points is the slowest to check.
-- A `jstr::String` is 96 bytes in every Type (64 held inside); `std::string` is 32.
+- A `jString::String` is 96 bytes in every Type (64 held inside); `std::string` is 32.
 
 ## Building
 

@@ -2,13 +2,13 @@
 // Purpose: A literal is Ascii text only when it is ASCII: "café"_js is not, and is refused while compiling.
 #include "jString/v001/jstring.hpp"
 
-using namespace jstr::literals;
+using namespace jString::literals;
 
 int main() {
 #ifdef JSTR_BREAK
-    const jstr::String<jstr::Type::Ascii> text = "caf\xC3\xA9"_js;
+    const jString::String<jString::Type::Ascii> text = "caf\xC3\xA9"_js;
 #else
-    const jstr::String<jstr::Type::Ascii> text = "cafe"_js;
+    const jString::String<jString::Type::Ascii> text = "cafe"_js;
 #endif
     static_cast<void>(text);
 }

@@ -2,15 +2,15 @@
 // Purpose: A view must not be copied into a String without saying so: every copy is named.
 #include "jString/v001/jstring.hpp"
 
-using namespace jstr::literals;
+using namespace jString::literals;
 
 namespace {
 
-[[nodiscard]] jstr::String<jstr::Type::UTF8Full> keep(jstr::StringView<jstr::Type::UTF8Full> view) {
+[[nodiscard]] jString::String<jString::Type::UTF8Full> keep(jString::StringView<jString::Type::UTF8Full> view) {
 #ifdef JSTR_BREAK
     return view;
 #else
-    return jstr::String<jstr::Type::UTF8Full>{view};
+    return jString::String<jString::Type::UTF8Full>{view};
 #endif
 }
 

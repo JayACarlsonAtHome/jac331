@@ -2,15 +2,15 @@
 // Purpose: A piece of a String that is about to be destroyed would point at freed memory: it must not compile.
 #include "jString/v001/jstring.hpp"
 
-using namespace jstr::literals;
+using namespace jString::literals;
 
 int main() {
-    const jstr::String<jstr::Type::UTF8Full> text = "This is a test"_js;
+    const jString::String<jString::Type::UTF8Full> text = "This is a test"_js;
 #ifdef JSTR_BREAK
-    const auto piece = jstr::String<jstr::Type::UTF8Full>{text}.substring(jstr::CodePointIndex{0});
+    const auto piece = jString::String<jString::Type::UTF8Full>{text}.substring(jString::CodePointIndex{0});
     static_cast<void>(piece);
 #else
-    const auto piece = text.substring(jstr::CodePointIndex{0});
+    const auto piece = text.substring(jString::CodePointIndex{0});
     static_cast<void>(piece);
 #endif
     static_cast<void>(text);

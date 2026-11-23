@@ -33,12 +33,12 @@
 
 namespace {
 
-using jstr::CodePointCount;
-using jstr::CodePointIndex;
-using jstr::String;
-using jstr::StringView;
-using jstr::Type;
-using namespace jstr::literals;
+using jString::CodePointCount;
+using jString::CodePointIndex;
+using jString::String;
+using jString::StringView;
+using jString::Type;
+using namespace jString::literals;
 
 // Each result is stored here, so the compiler cannot decide the work was never needed.
 volatile std::size_t g_sink = 0;
@@ -129,10 +129,10 @@ template <Type T>
 [[nodiscard]] std::basic_string<typename StringView<T>::unit> units_as(std::string_view utf8) {
     const String<Type::UTF8Packed> text = String<Type::UTF8Packed>::from(utf8).value();
     if constexpr (T == Type::Ascii) {
-        const std::vector<char> plain = jstr::convert_lossy<Type::Ascii>(text).to_packed();
+        const std::vector<char> plain = jString::convert_lossy<Type::Ascii>(text).to_packed();
         return std::string{plain.begin(), plain.end()};
     } else {
-        const auto packed = jstr::convert<T>(text).to_packed();
+        const auto packed = jString::convert<T>(text).to_packed();
         return std::basic_string<typename StringView<T>::unit>{packed.begin(), packed.end()};
     }
 }
@@ -394,8 +394,8 @@ int main(int argc, char**) {
               [&] { keep(std::hash<std::string>{}(std_mixed)); },
               [&](const auto& m) { keep(std::hash<std::remove_cvref_t<decltype(m.mixed_4k)>>{}(m.mixed_4k)); });
 
-    std::cout << "\nsizeof: std::string " << sizeof(std::string) << " bytes; jstr::String (any Type) " << sizeof(String<Type::UTF8Full>)
-              << " bytes, 64 of them inside; jstr::StringView " << sizeof(StringView<Type::UTF8Full>) << " bytes\n";
+    std::cout << "\nsizeof: std::string " << sizeof(std::string) << " bytes; jString::String (any Type) " << sizeof(String<Type::UTF8Full>)
+              << " bytes, 64 of them inside; jString::StringView " << sizeof(StringView<Type::UTF8Full>) << " bytes\n";
     std::cout << "4 KiB mixed kept: std::string " << mixed_4k.bytes.size() << " bytes; UTF8Packed " << packed.mixed_4k.size_packed() << "; UTF8Full "
               << mixed_4k.code_points * 4 << "; UTF16 " << utf16.mixed_4k.size_packed() * 2 << "; UTF32 " << mixed_4k.code_points * 4 << "\n";
     return 0;

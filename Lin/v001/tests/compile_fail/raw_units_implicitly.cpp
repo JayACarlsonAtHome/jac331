@@ -6,10 +6,10 @@
 
 #include "jString/v001/jstring.hpp"
 
-using namespace jstr::literals;
+using namespace jString::literals;
 
 int main() {
-    const jstr::String<jstr::Type::UTF8Full> text = "text"_js;
+    const jString::String<jString::Type::UTF8Full> text = "text"_js;
 #ifdef JSTR_BREAK
     const std::string_view bytes = text;
 #else

@@ -14,11 +14,11 @@
 
 namespace {
 
-using namespace jstr::literals;
+using namespace jString::literals;
 
 struct Error {
     int code;
-    jstr::String<jstr::Type::UTF8Full> message;
+    jString::String<jString::Type::UTF8Full> message;
 };
 
 class Engine {

@@ -2,10 +2,10 @@
 // Purpose: Text has no operator[]: a byte offset can land inside a code point. code_points() walks whole ones.
 #include "jString/v001/jstring.hpp"
 
-using namespace jstr::literals;
+using namespace jString::literals;
 
 int main() {
-    const jstr::String<jstr::Type::UTF8Full> text = "\xC3\xA9t\xC3\xA9"_js;
+    const jString::String<jString::Type::UTF8Full> text = "\xC3\xA9t\xC3\xA9"_js;
 #ifdef JSTR_BREAK
     const auto first = text[0];
 #else

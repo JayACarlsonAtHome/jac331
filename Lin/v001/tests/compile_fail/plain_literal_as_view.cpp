@@ -3,13 +3,13 @@
 //          compiler makes and checks.
 #include "jString/v001/jstring.hpp"
 
-using namespace jstr::literals;
+using namespace jString::literals;
 
 int main() {
 #ifdef JSTR_BREAK
-    const jstr::StringView<jstr::Type::UTF8Full> view = "text";
+    const jString::StringView<jString::Type::UTF8Full> view = "text";
 #else
-    const jstr::StringView<jstr::Type::UTF8Full> view = "text"_js;
+    const jString::StringView<jString::Type::UTF8Full> view = "text"_js;
 #endif
     static_cast<void>(view);
 }

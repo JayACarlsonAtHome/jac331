@@ -13,13 +13,13 @@
 
 namespace {
 
-using jstr::Ascii;
-using jstr::EncodingError;
-using jstr::Scan;
-using jstr::Utf16;
-using jstr::Utf32;
+using jString::Ascii;
+using jString::EncodingError;
+using jString::Scan;
+using jString::Utf16;
+using jString::Utf32;
 
-constexpr char32_t bad = jstr::replacement_character;
+constexpr char32_t bad = jString::replacement_character;
 
 // Whether scan, decode, encode and length_of agree on code_point, in encoding E.
 template <class E>
@@ -40,7 +40,7 @@ int main() {
     // --- ASCII: below 80 is a code point, anything else is one bad byte ---
     check(Ascii::scan("A") == Scan{U'A', 1, true} && Ascii::scan("\x7F") == Scan{U'\x7F', 1, true}, "below 80");
     check(Ascii::scan("\x80") == Scan{bad, 1, false} && Ascii::scan("\xC3\xA9") == Scan{bad, 1, false}, "80 and above: one bad byte each");
-    check(jstr::first_invalid<Ascii>("caf\xC3\xA9") == EncodingError{3}, "found at its offset");
+    check(jString::first_invalid<Ascii>("caf\xC3\xA9") == EncodingError{3}, "found at its offset");
     std::array<char, 1> one{};
     check(Ascii::encode(U'z', one) == 1 && one[0] == 'z' && Ascii::encode(U'é', one) == 1 && one[0] == '?', "encode: the code point, or '?'");
 
