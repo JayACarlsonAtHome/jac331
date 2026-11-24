@@ -13,7 +13,7 @@
 //          UTF16 and UTF32 are kept in this machine's byte order. Every Type compares in code point order on every
 //          machine: Ascii, UTF8Packed and UTF8Full as bytes, UTF32 as numbers, UTF16 by rank (see Utf16::rank).
 // Modified 2026-11-24 by Claude Opus 5.5: offset_of passes whole blocks counted wide before it walks; UTF-8 written
-//          straight from UTF16 and UTF32.
+//          straight from UTF16 and UTF32; decode_at gives UTF-8 the rest of the text.
 #pragma once
 
 #include <algorithm>
@@ -112,10 +112,16 @@ template <Type T>
     }
 }
 
-// The code point at at, in valid kept text.
+// The code point at at, in valid kept text. UTF-8 is given the rest of the text, not its code point cut out: its decode
+// reads only as far as the lead byte says, and the cut is one more length found and checked at every code point.
+// (UTF-16, given the rest, was slower on clang++.)
 template <Type T>
 [[nodiscard]] constexpr char32_t decode_at(kept<T> text, std::size_t at) noexcept {
-    return codec_of<T>::decode(text.subspan(at, length_at<T>(text, at)));
+    if constexpr (std::is_same_v<codec_of<T>, Utf8>) {
+        return Utf8::decode(text.subspan(at));
+    } else {
+        return codec_of<T>::decode(text.subspan(at, length_at<T>(text, at)));
+    }
 }
 
 // How many units start a code point: a loop with no branch, which compilers make wide (and wider still over a fixed

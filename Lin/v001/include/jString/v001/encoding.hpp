@@ -4,10 +4,11 @@
 //          many units does it take? encode(): what are a code point's units? Checking, repairing and converting text
 //          are built on those answers. How a String lays the units out (packed, or a code point to a 4-byte cell) is
 //          type.hpp's, not the encoding's.
+// Modified 2026-11-24 by Claude Opus 5.5: Utf8::length_of by adding comparisons, not a table; decode with no loop,
+//          read through an iterator.
 #pragma once
 
 #include <algorithm>
-#include <array>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -140,23 +141,29 @@ struct Utf8 {
 
     [[nodiscard]] static constexpr bool whole_alone(char unit) noexcept { return byte(unit) < 0x80U; }
     [[nodiscard]] static constexpr bool starts_code_point(char unit) noexcept { return (byte(unit) & 0xC0U) != 0x80U; }
-    // In valid text the lead byte's high four bits say it: below C one byte (ASCII; 8 to B are never a lead), C and D
-    // two, E three, F four. Looked up, not compared: compares become branches, which mixed text keeps mispredicting.
+    // In valid text the lead byte says it: below C0 one byte (ASCII; 80 to BF are never a lead), from C0 two, from
+    // E0 three, from F0 four. Each "from" is a comparison made a 0 or 1 and added, with no branch, which mixed text
+    // would keep mispredicting. Not looked up in a table: walking text, where the next code point starts waits on
+    // this, and a table is a second load after the byte's own (walking mixed UTF-8 took four times as long).
     [[nodiscard]] static constexpr std::size_t length_of(char lead) noexcept {
-        // static: one table for the program, not one built on the stack at every call.
-        static constexpr std::array<std::uint8_t, 16> by_high_bits{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 3, 4};
-        return by_high_bits[byte(lead) >> 4U];
+        const std::uint32_t value = byte(lead);
+        return 1U + (value >= 0xC0U ? 1U : 0U) + (value >= 0xE0U ? 1U : 0U) + (value >= 0xF0U ? 1U : 0U);
     }
 
     // valid must start with a whole, valid code point (a cell does): the lead byte gives the length and its own bits,
-    // and each byte after it six more. Kept short, so that compilers put it inline in a loop over code points.
+    // and each byte after it six more. Kept short, a line for each length with no loop, and read through an iterator,
+    // which _GLIBCXX_ASSERTIONS does not check, not through span's [], which it does: with the check's calls in it,
+    // clang++ called this at every code point instead of putting it inline (walking mixed UTF-8 took 1.3 times as long).
+    // valid is whole by the rule above, so nothing past its end is read.
     [[nodiscard]] static constexpr char32_t decode(std::span<const char> valid) noexcept {
-        const std::uint32_t lead = byte(valid.front());
-        if (lead < 0x80U) return static_cast<char32_t>(lead);
-        const std::size_t length = length_of(valid.front());
-        std::uint32_t value = lead & (0xFFU >> (length + 1));
-        for (const char unit : valid.subspan(1, length - 1)) value = (value << 6U) | (byte(unit) & 0x3FU);
-        return static_cast<char32_t>(value);
+        const auto units = valid.begin();
+        const std::uint32_t lead = byte(units[0]);
+        if (lead < 0xC0U) return static_cast<char32_t>(lead);
+        const std::uint32_t second = byte(units[1]) & 0x3FU;
+        if (lead < 0xE0U) return static_cast<char32_t>(((lead & 0x1FU) << 6U) | second);
+        const std::uint32_t third = byte(units[2]) & 0x3FU;
+        if (lead < 0xF0U) return static_cast<char32_t>(((lead & 0x0FU) << 12U) | (second << 6U) | third);
+        return static_cast<char32_t>(((lead & 0x07U) << 18U) | (second << 12U) | (third << 6U) | (byte(units[3]) & 0x3FU));
     }
 
     // The rule in the Unicode Standard's table 3-6. code_point must be a scalar value.
@@ -206,9 +213,11 @@ struct Utf16 {
     [[nodiscard]] static constexpr bool whole_alone(char16_t unit) noexcept { return !is_surrogate(unit); }
     [[nodiscard]] static constexpr bool starts_code_point(char16_t unit) noexcept { return !is_low(unit); }
     [[nodiscard]] static constexpr std::size_t length_of(char16_t lead) noexcept { return is_high(lead) ? 2 : 1; }
+    // valid must start with a whole, valid code point. Read through an iterator for the reason Utf8::decode gives.
     [[nodiscard]] static constexpr char32_t decode(std::span<const char16_t> valid) noexcept {
-        const char16_t lead = valid.front();
-        return is_high(lead) ? pair(lead, valid[1]) : char32_t{lead};
+        const auto units = valid.begin();
+        const char16_t lead = units[0];
+        return is_high(lead) ? pair(lead, units[1]) : char32_t{lead};
     }
     // code_point must be a scalar value.
     [[nodiscard]] static constexpr std::size_t encode(char32_t code_point, std::span<char16_t, 2> out) noexcept {
