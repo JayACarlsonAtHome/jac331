@@ -5,10 +5,11 @@
 //          are built on those answers. How a String lays the units out (packed, or a code point to a 4-byte cell) is
 //          type.hpp's, not the encoding's.
 // Modified 2026-11-24 by Claude Opus 5.5: Utf8::length_of by adding comparisons, not a table; decode with no loop,
-//          read through an iterator.
+//          read through an iterator; UTF-8 checked by a shift-based DFA.
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -296,12 +297,126 @@ template <Encoding E>
     return all != 0;
 }
 
+// --- UTF-8 checked by a shift-based DFA (a state machine whose step is a shift) ---
+//
+// The states, by number: 0 between code points; 1, 2 and 3 with that many continuation bytes still to come; 4 after
+// E0 (A0 to BF must come next, or the form is overlong), 5 after ED (80 to 9F, or it is a surrogate), 6 after F0 (90 to
+// BF, or overlong), 7 after F4 (80 to 8F, or past U+10FFFF); 8 a bad sequence, which it never leaves. These are table
+// 3-7's rules. A state is held as 6 times its number: the place of its own next state in a byte's row, which holds the
+// next state for every state, 6 bits each. A step is then (row >> state) & 63: a shift and a mask, no branch, and the
+// row is read by the byte alone, so the read never waits on the step before.
+namespace utf8_dfa {
+
+inline constexpr std::uint32_t state_bits = 6;
+inline constexpr std::uint32_t between = 0;
+inline constexpr std::uint32_t bad = 8 * state_bits;
+
+[[nodiscard]] consteval std::uint64_t row_of(std::uint32_t lead) {
+    std::array<std::uint32_t, 9> next{};
+    next.fill(8);
+    const bool low = lead >= 0x80U && lead <= 0x8FU;
+    const bool middle = lead >= 0x90U && lead <= 0x9FU;
+    const bool high = lead >= 0xA0U && lead <= 0xBFU;
+    if (lead < 0x80U) {
+        next[0] = 0;
+    } else if (lead >= 0xC2U && lead <= 0xDFU) {
+        next[0] = 1;
+    } else if (lead == 0xE0U) {
+        next[0] = 4;
+    } else if (lead == 0xEDU) {
+        next[0] = 5;
+    } else if (lead >= 0xE1U && lead <= 0xEFU) {
+        next[0] = 2;
+    } else if (lead == 0xF0U) {
+        next[0] = 6;
+    } else if (lead >= 0xF1U && lead <= 0xF3U) {
+        next[0] = 3;
+    } else if (lead == 0xF4U) {
+        next[0] = 7;
+    }
+    if (low || middle || high) {
+        next[1] = 0;
+        next[2] = 1;
+        next[3] = 2;
+    }
+    if (high) next[4] = 1;
+    if (low || middle) next[5] = 1;
+    if (middle || high) next[6] = 2;
+    if (low) next[7] = 2;
+    std::uint64_t row = 0;
+    for (std::uint32_t state = 0; state < next.size(); ++state) row |= std::uint64_t{next[state] * state_bits} << (state * state_bits);
+    return row;
+}
+
+[[nodiscard]] consteval std::array<std::uint64_t, 256> rows() {
+    std::array<std::uint64_t, 256> all{};
+    for (std::uint32_t lead = 0; lead < all.size(); ++lead) all[lead] = row_of(lead);
+    return all;
+}
+
+// The state after unit, from state.
+[[nodiscard]] constexpr std::uint32_t step(std::uint32_t state, char unit) noexcept {
+    // static: one table for the program, made while compiling.
+    static constexpr std::array<std::uint64_t, 256> table = rows();
+    return static_cast<std::uint32_t>(table[static_cast<unsigned char>(unit)] >> state) & 63U;
+}
+
+// Valid UTF-8's code point count, or nothing when it is not valid (then it is scanned again, to say where). Between
+// code points, blocks of ASCII are passed in a loop of their own, one block a step (in one loop with the DFA's blocks,
+// clang++ took four times as long over ASCII); any other block is stepped through to its end, with no exit inside it,
+// and its code points counted as count_of counts them, wide.
+[[nodiscard]] constexpr std::optional<std::size_t> count_if_valid(std::string_view units) noexcept {
+    std::uint32_t state = between;
+    std::size_t count = 0;
+    std::size_t at = 0;
+    while (units.size() - at >= block_units) {
+        if (state == between) {
+            const std::size_t from = at;
+            while (units.size() - at >= block_units && all_whole_alone<Utf8>(units.substr(at, block_units))) at += block_units;
+            count += at - from;
+            if (units.size() - at < block_units) break;
+        }
+        const std::string_view block = units.substr(at, block_units);
+        at += block_units;
+        std::size_t starts = 0;
+        for (const char unit : block) {
+            state = step(state, unit);
+            starts += Utf8::starts_code_point(unit) ? 1U : 0U;
+        }
+        count += starts;
+        if (state == bad) return std::nullopt;
+    }
+    // The rest, under a block: ASCII between code points is passed a byte at a time, the rest stepped through.
+    if (state == between) {
+        const std::size_t from = at;
+        while (at < units.size() && Utf8::whole_alone(units[at])) ++at;
+        count += at - from;
+    }
+    for (const char unit : units.substr(at)) {
+        state = step(state, unit);
+        count += Utf8::starts_code_point(unit) ? 1U : 0U;
+    }
+    if (state != between) return std::nullopt;
+    return count;
+}
+
+}  // namespace utf8_dfa
+
 }  // namespace detail
 
-// Checks units: how many code points they hold, or where they first go wrong. A block of units that are each a whole
-// code point is passed in one step; anything else is scanned a code point at a time to the end of its block.
+// Checks units: how many code points they hold, or where they first go wrong. UTF-8 is checked by the DFA above first.
+// Otherwise a block of units that are each a whole code point is passed in one step; anything else is scanned a code
+// point at a time to the end of its block.
 template <Encoding E>
 [[nodiscard]] constexpr std::expected<std::size_t, EncodingError> validate(std::basic_string_view<typename E::unit> units) noexcept {
+    if constexpr (std::same_as<E, Utf8>) {
+        // Valid text, the usual case, by the DFA; text that is not, scanned below to say where it first goes wrong.
+        // Text shorter than a block is only scanned: the DFA would step through every byte of it, ASCII too, and
+        // made 10 bytes take over half as long again.
+        if (units.size() >= detail::block_units) {
+            if (const std::optional<std::size_t> count = detail::utf8_dfa::count_if_valid(units)) return *count;
+        }
+    }
     std::size_t at = 0;
     std::size_t count = 0;
     while (at < units.size()) {

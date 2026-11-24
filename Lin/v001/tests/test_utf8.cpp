@@ -1,9 +1,13 @@
 // File: tests/test_utf8.cpp
 // Purpose: UTF-8 scanning at run time: every length of valid sequence and its edges, and every kind of bad one, with
 //          the length the Unicode Standard gives its maximal subpart. test_constexpr.cpp proves the same at compile time.
+//          validate(), which checks valid text by a DFA and scans only text that is not, against scan on every kind of
+//          sequence.
+// Modified 2026-11-24 by Claude Opus 5.5: validate()'s DFA against scan.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <span>
 #include <string>
@@ -53,6 +57,26 @@ constexpr char32_t bad = jString::replacement_character;
     std::array<char, 4> bytes{};
     const std::size_t length = Utf8::encode(static_cast<char32_t>(code_point), bytes);
     return std::string{bytes.data(), length};
+}
+
+// What validate() must give, found by scan alone: the code point count, or where the first bad sequence starts.
+[[nodiscard]] std::expected<std::size_t, EncodingError> scanned(std::string_view units) {
+    std::size_t at = 0;
+    std::size_t count = 0;
+    while (at < units.size()) {
+        const Scan one = scan(units.substr(at));
+        if (!one.valid) return std::unexpected(EncodingError{at});
+        at += one.length;
+        ++count;
+    }
+    return count;
+}
+
+// Whether validate() agrees with scan on these bytes: alone (stepped through a byte at a time, shorter than a block),
+// and with 14 ASCII bytes before them and 16 after (across the edge of a block, then a block of ASCII).
+[[nodiscard]] bool validate_agrees(std::string_view bytes) {
+    const std::string padded = std::string(14, 'a') + std::string{bytes} + std::string(16, 'b');
+    return jString::validate<Utf8>(bytes) == scanned(bytes) && jString::validate<Utf8>(padded) == scanned(padded);
 }
 
 }  // namespace
@@ -124,5 +148,39 @@ int main() {
 
     // U+FFFD's own bytes are valid UTF-8, and say U+FFFD.
     check(scan(Utf8::replacement()) == Scan{bad, 3, true}, "the replacement is U+FFFD, valid");
+
+    // validate() against scan: every byte, and every pair of bytes; then every sequence of up to four of the bytes at
+    // the edges of the ranges table 3-7 names (the DFA's rows change only there).
+    std::size_t validate_wrong = 0;
+    for (std::uint32_t first = 0; first < 256; ++first) {
+        const char one = static_cast<char>(static_cast<unsigned char>(first));
+        if (!validate_agrees(std::string_view{&one, 1})) ++validate_wrong;
+        for (std::uint32_t second = 0; second < 256; ++second) {
+            const std::array<char, 2> two{one, static_cast<char>(static_cast<unsigned char>(second))};
+            if (!validate_agrees(std::string_view{two.data(), two.size()})) ++validate_wrong;
+        }
+    }
+    check(validate_wrong == 0, "validate agrees with scan on every byte and every two bytes");
+    constexpr std::array<std::uint8_t, 24> edges{0x00, 0x7F, 0x80, 0x8F, 0x90, 0x9F, 0xA0, 0xBF, 0xC0, 0xC1, 0xC2, 0xDF,
+                                                 0xE0, 0xE1, 0xEC, 0xED, 0xEE, 0xEF, 0xF0, 0xF1, 0xF3, 0xF4, 0xF5, 0xFF};
+    validate_wrong = 0;
+    for (const std::uint8_t a : edges) {
+        for (const std::uint8_t b : edges) {
+            for (const std::uint8_t c : edges) {
+                const std::array<char, 3> three{static_cast<char>(a), static_cast<char>(b), static_cast<char>(c)};
+                if (!validate_agrees(std::string_view{three.data(), three.size()})) ++validate_wrong;
+                for (const std::uint8_t d : edges) {
+                    const std::array<char, 4> four{static_cast<char>(a), static_cast<char>(b), static_cast<char>(c), static_cast<char>(d)};
+                    if (!validate_agrees(std::string_view{four.data(), four.size()})) ++validate_wrong;
+                }
+            }
+        }
+    }
+    check(validate_wrong == 0, "and on every three and four of the bytes at the edges of the ranges");
+    std::string every;
+    for (std::uint32_t c = 0; c <= 0x10FFFFU; ++c) {
+        if (c < 0xD800U || c > 0xDFFFU) every += encoded_by_jstring(c);
+    }
+    check(jString::validate<Utf8>(every) == std::expected<std::size_t, EncodingError>{1'112'064U}, "and every code point in one text is valid");
     return check.finish();
 }
