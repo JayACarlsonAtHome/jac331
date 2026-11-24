@@ -15,7 +15,7 @@
 //          Build it optimized (gcc-release or clang-release) for numbers worth reading. Any argument (ctest passes
 //          --quick) runs every job a few times only, to prove it works.
 // Modified 2026-11-23 by Claude Opus 5.5: [[clang::lifetimebound]] where clang++ 23 asks for it.
-// Modified 2026-11-24 by Claude Opus 5.5: the case changes.
+// Modified 2026-11-24 by Claude Opus 5.5: the case changes; find by position, then send out as UTF-8.
 #include <algorithm>
 #include <bit>
 #include <cctype>
@@ -376,6 +376,42 @@ int main(int argc, char**) {
     bench.job("UTF-8 of 4 KiB ASCII, its own (std: copy)", plain, 100'000,
               [&] { const std::string t{std_ascii}; keep(t); },
               [&](const auto& m) { const std::vector<char> t = m.ascii_4k.to_utf8(); keep(std::string_view{t.data(), t.size()}); });
+
+    // --- Find by position, then send out as UTF-8: the job UTF8Full's cells are for (found at once, sent without encoding) ---
+    bench.job("at(n) then its UTF-8, x1024, 4 KiB mixed (std: walks)", wide, 100,
+              [&] {
+                  std::size_t sum = 0;
+                  const std::string_view all{std_mixed};
+                  for (const std::size_t n : mixed_at) {
+                      const std::size_t begin = std_offset_of(all, n);
+                      const std::size_t size = std_offset_of(all.substr(begin), 1);
+                      std::ranges::copy(all.substr(begin, size), out_buffer.begin());
+                      sum += size;
+                  }
+                  keep(sum);
+              },
+              [&](const auto& m) {
+                  std::size_t sum = 0;
+                  for (const std::size_t n : mixed_at) sum += *m.mixed_4k.at(CodePointIndex{n})->write_utf8(out_buffer);
+                  keep(sum);
+              });
+    bench.job("substring 100 then its UTF-8, x1024, 4 KiB mixed", wide, 100,
+              [&] {
+                  std::size_t sum = 0;
+                  const std::string_view all{std_mixed};
+                  for (const std::size_t n : mixed_starts) {
+                      const std::size_t begin = std_offset_of(all, n);
+                      const std::size_t size = std_offset_of(all.substr(begin), 100);
+                      std::ranges::copy(all.substr(begin, size), out_buffer.begin());
+                      sum += size;
+                  }
+                  keep(sum);
+              },
+              [&](const auto& m) {
+                  std::size_t sum = 0;
+                  for (const std::size_t n : mixed_starts) sum += *m.mixed_4k.substring(CodePointIndex{n}, CodePointCount{100})->write_utf8(out_buffer);
+                  keep(sum);
+              });
 
     // --- Counting, walking, searching, comparing, hashing ---
     bench.job("count code points, 4 KiB mixed", wide, 100'000,
