@@ -2,6 +2,7 @@
 // Purpose: The same promises as the run-time tests, proven while compiling, for every Type. A constant evaluation
 //          stops at undefined behaviour, a leak, or a read out of bounds, so each static_assert here also proves the
 //          code it runs has none. Running it only reports that it was built.
+// Modified 2026-11-24 by Claude Opus 5.5: case changes proven while compiling, in every Type.
 #include <iostream>
 #include <string_view>
 #include <utility>
@@ -89,6 +90,36 @@ static_assert(unicode_type<Type::UTF8Packed>());
 static_assert(unicode_type<Type::UTF8Full>());
 static_assert(unicode_type<Type::UTF16>());
 static_assert(unicode_type<Type::UTF32>());
+
+// Case changes (added 2026-11-24 by Claude Opus 5.5): the tables are searched and the text rebuilt while compiling,
+// in every Type; Ascii with ASCII text only.
+template <Type T>
+[[nodiscard]] consteval bool ascii_case() {
+    bool good = String<T>{"Hello, World"_js}.to_upper() == "HELLO, WORLD"_js && String<T>{"Hello, World"_js}.to_lower() == "hello, world"_js;
+    good = good && String<T>{"the lord of the rings"_js}.to_headline() == "The Lord of the Rings"_js;
+    good = good && String<T>{"don't stop"_js}.to_title() == "Don't Stop"_js;
+    good = good && String<T>{"hi bob. bye"_js}.capitalize_sentences() == "Hi bob. Bye"_js;
+    return good;
+}
+static_assert(ascii_case<Type::Ascii>());
+static_assert(ascii_case<Type::UTF8Packed>());
+static_assert(ascii_case<Type::UTF8Full>());
+static_assert(ascii_case<Type::UTF16>());
+static_assert(ascii_case<Type::UTF32>());
+
+template <Type T>
+[[nodiscard]] consteval bool unicode_case() {
+    bool good = String<T>{"Straße"_js}.to_upper() == "STRASSE"_js;
+    good = good && String<T>{"ΟΔΟΣ ΣΟΦΙΑ"_js}.to_lower() == "οδος σοφια"_js;
+    good = good && String<T>{"ǆungla don't"_js}.to_title() == "ǅungla Don't"_js;
+    good = good && String<T>{"¿qué? sí. bye"_js}.capitalize_sentences() == "¿Qué? Sí. Bye"_js;
+    good = good && String<T>{"\U00010428"_js}.to_upper() == "\U00010400"_js;
+    return good;
+}
+static_assert(unicode_case<Type::UTF8Packed>());
+static_assert(unicode_case<Type::UTF8Full>());
+static_assert(unicode_case<Type::UTF16>());
+static_assert(unicode_case<Type::UTF32>());
 
 // UTF-8 coming in, checked and repaired while compiling.
 template <Type T>

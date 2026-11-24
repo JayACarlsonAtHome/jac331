@@ -15,8 +15,10 @@
 //          Build it optimized (gcc-release or clang-release) for numbers worth reading. Any argument (ctest passes
 //          --quick) runs every job a few times only, to prove it works.
 // Modified 2026-11-23 by Claude Opus 5.5: [[clang::lifetimebound]] where clang++ 23 asks for it.
+// Modified 2026-11-24 by Claude Opus 5.5: the case changes.
 #include <algorithm>
 #include <bit>
+#include <cctype>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -395,6 +397,44 @@ int main(int argc, char**) {
     bench.job("hash, 4 KiB", wide, 100'000,
               [&] { keep(std::hash<std::string>{}(std_mixed)); },
               [&](const auto& m) { keep(std::hash<std::remove_cvref_t<decltype(m.mixed_4k)>>{}(m.mixed_4k)); });
+
+    // --- Case changes. std::string has none of its own: it is given std::toupper and std::tolower byte by byte, which
+    // is right for ASCII only, and labelled so. Each change makes a new string. ---
+    const auto std_upper = [](std::string text) {
+        for (char& unit : text) unit = static_cast<char>(std::toupper(static_cast<unsigned char>(unit)));
+        return text;
+    };
+    const auto std_lower = [](std::string text) {
+        for (char& unit : text) unit = static_cast<char>(std::tolower(static_cast<unsigned char>(unit)));
+        return text;
+    };
+    const auto std_title = [](std::string text) {
+        bool start = true;
+        for (char& unit : text) {
+            const auto byte = static_cast<unsigned char>(unit);
+            unit = static_cast<char>(start ? std::toupper(byte) : std::tolower(byte));
+            start = std::isalnum(byte) == 0;
+        }
+        return text;
+    };
+    bench.job("to_upper, 4 KiB ASCII (std: toupper per byte)", plain, 20'000,
+              [&] { const std::string s = std_upper(std_ascii); keep(s); },
+              [&](const auto& m) { const auto s = m.ascii_4k.to_upper(); keep(s.view()); });
+    bench.job("to_upper, 4 KiB mixed (std: per byte, WRONG)", wide, 20'000,
+              [&] { const std::string s = std_upper(std_mixed); keep(s); },
+              [&](const auto& m) { const auto s = m.mixed_4k.to_upper(); keep(s.view()); });
+    bench.job("to_lower, 4 KiB mixed (std: per byte, WRONG)", wide, 20'000,
+              [&] { const std::string s = std_lower(std_mixed); keep(s); },
+              [&](const auto& m) { const auto s = m.mixed_4k.to_lower(); keep(s.view()); });
+    bench.job("to_title, 4 KiB mixed (std: ASCII words only)", wide, 20'000,
+              [&] { const std::string s = std_title(std_mixed); keep(s); },
+              [&](const auto& m) { const auto s = m.mixed_4k.to_title(); keep(s.view()); });
+    bench.job("to_headline, 4 KiB mixed (std: ASCII words only)", wide, 20'000,
+              [&] { const std::string s = std_title(std_mixed); keep(s); },
+              [&](const auto& m) { const auto s = m.mixed_4k.to_headline(); keep(s.view()); });
+    bench.job("capitalize_sentences, 4 KiB mixed (std: copy only)", wide, 20'000,
+              [&] { const std::string s{std_mixed}; keep(s); },
+              [&](const auto& m) { const auto s = m.mixed_4k.capitalize_sentences(); keep(s.view()); });
 
     std::cout << "\nsizeof: std::string " << sizeof(std::string) << " bytes; jString::String (any Type) " << sizeof(String<Type::UTF8Full>)
               << " bytes, 64 of them inside; jString::StringView " << sizeof(StringView<Type::UTF8Full>) << " bytes\n";

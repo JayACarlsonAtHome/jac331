@@ -21,6 +21,7 @@
 //            - text of one Type never becomes another without convert<To>(), and convert<Type::Ascii>() says which code
 //              point would not fit, rather than losing it (convert_lossy<Type::Ascii>() makes it '?', by name)
 // Modified 2026-11-23 by Claude Opus 5.5: [[clang::lifetimebound]] where clang++ 23 asks for it.
+// Modified 2026-11-24 by Claude Opus 5.5: case changes (to_lower, to_upper, to_title, to_headline, capitalize_sentences).
 #pragma once
 
 #include <algorithm>
@@ -38,6 +39,7 @@
 #include <utility>
 #include <vector>
 
+#include "case_mapping.hpp"
 #include "cells.hpp"
 #include "encoding.hpp"
 #include "string_view.hpp"
@@ -174,6 +176,18 @@ public:
     [[nodiscard]] constexpr bool ends_with(StringView<T> suffix) const noexcept { return view().ends_with(suffix); }
     [[nodiscard]] constexpr bool contains(StringView<T> part) const noexcept { return view().contains(part); }
 
+    // Case changes, by Unicode's full case mappings, the same in every language (case_mapping.hpp says exactly what
+    // each does). Each makes a new String; this one is not changed. The text can grow: "straße" upper is "STRASSE".
+    // Ascii text never grows: it maps A-Z and a-z only.
+    [[nodiscard]] constexpr String to_lower() const { return changed<detail::CaseChange::lower>(); }
+    [[nodiscard]] constexpr String to_upper() const { return changed<detail::CaseChange::upper>(); }
+    // The first code point of every word title-cased, the rest lowered: "the lord of the rings" -> "The Lord Of The Rings".
+    [[nodiscard]] constexpr String to_title() const { return changed<detail::CaseChange::title>(); }
+    // English headline style: as to_title(), with the small words lowered -> "The Lord of the Rings".
+    [[nodiscard]] constexpr String to_headline() const { return changed<detail::CaseChange::headline>(); }
+    // The first letter of each sentence raised, everything else as it is: "hello Bob. bye" -> "Hello Bob. Bye".
+    [[nodiscard]] constexpr String capitalize_sentences() const { return changed<detail::CaseChange::sentences>(); }
+
     // Text going out: see StringView.
     [[nodiscard]] constexpr std::size_t size_packed() const noexcept { return view().size_packed(); }
     [[nodiscard]] constexpr std::optional<std::size_t> write_packed(std::span<packed_unit> out) const noexcept { return view().write_packed(out); }
@@ -280,6 +294,21 @@ private:
     [[nodiscard]] static constexpr String repaired(lossy_view units) {
         String text;
         static_cast<void>(detail::keep_lossy<T>(units, text.fresh(detail::lossy_size<T>(units))));
+        return text;
+    }
+
+    // This text with one case change made, as a new String. Text too long to fit inside takes the new units' vector
+    // as it is, with no copy.
+    template <detail::CaseChange C>
+    [[nodiscard]] constexpr String changed() const {
+        std::vector<unit> made = detail::change_case<T, C>(kept_units());
+        String text;
+        if (made.size() > inline_units) {
+            text.size_ = made.size();
+            text.heap_ = std::move(made);
+        } else {
+            std::ranges::copy(made, text.fresh(made.size()).begin());
+        }
         return text;
     }
 

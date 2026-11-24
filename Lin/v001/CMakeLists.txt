@@ -4,6 +4,7 @@
 #          jString builds under the same rules it was tested under.
 # Modified 2026-11-23 by Claude Opus 5.5: lifetime-safety suggestions back on; g++ accepts clang::lifetimebound.
 # Modified 2026-11-24 by Claude Opus 5.5: the -Wno-padded comment says which types are reordered.
+# Modified 2026-11-24 by Claude Opus 5.5: test_case, the case changes.
 cmake_minimum_required(VERSION 3.26)
 project(jString_v001 LANGUAGES C CXX)
 
@@ -126,6 +127,8 @@ endfunction()
 jstr_test(test_utf8)
 jstr_test(test_codecs)
 jstr_test(test_string)
+# Case changes (Unicode full case mapping) for every Type; every code point is also checked by tools/verify_case_with_python.py.
+jstr_test(test_case)
 jstr_test(test_convert)
 # Everything again inside static_assert: a constant evaluation stops at any undefined behaviour.
 jstr_test(test_constexpr)
