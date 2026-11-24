@@ -3,6 +3,7 @@
 #          relative to this file. The pin check, the hardening and the warning flags are jCppGUI's, so code that uses
 #          jString builds under the same rules it was tested under.
 # Modified 2026-11-23 by Claude Opus 5.5: lifetime-safety suggestions back on; g++ accepts clang::lifetimebound.
+# Modified 2026-11-24 by Claude Opus 5.5: the -Wno-padded comment says which types are reordered.
 cmake_minimum_required(VERSION 3.26)
 project(jString_v001 LANGUAGES C CXX)
 
@@ -96,7 +97,8 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # This code is C++23 only, so warnings about older standards contradict the language in use. This
     # one group also covers c++98-compat and the pre-c++14, 17, 20 and 23 compat families.
     -Wno-c++98-compat-pedantic
-    # Warns about the normal, unavoidable alignment gaps in a struct. We do not lay fields out by hand.
+    # Warns about the normal, unavoidable alignment gaps in a struct. Fields stay in the order that reads best; only a
+    # type kept in many copies is reordered to close its gaps, with a static_assert on its size.
     -Wno-padded
     # Contradicts -Wswitch-default, which the owner requires: a switch over an enum names every value,
     # checked by -Wswitch-enum, and also has a default, because a value from outside can be out of range.
