@@ -5,7 +5,7 @@
 //          code points for the four that hold them; then what is each Type's own (UTF8Full's cells, UTF16's pairs and
 //          order, UTF32's units, Ascii refusing what is not ASCII). test_convert.cpp converts between them.
 // Modified 2026-11-24 by Claude Opus 5.5: write_utf8 of every piece of mixed text, into room of every size near its own.
-// Modified 2026-11-24 by Claude Opus 5.5: every width across the edge of an offset_of block.
+// Modified 2026-11-24 by Claude Opus 5.5: every width across the edge of an offset_of block; searching long text.
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -295,6 +295,24 @@ void unicode_types(jstr_test::Checker& check) {
     // Searching mixed text: a whole code point, never part of one.
     check(View{"café été"_js}.contains("ét"_js) && !View{"café"_js}.contains("e"_js), "searching mixed text");
     check(View{"a\U0001F600b"_js}.split_once("\U0001F600"_js)->second == "b"_js, "split at a code point of two UTF-16 units");
+    // Searching long text: the piece at every place up to 70 code points in, after near misses that start as it does
+    // (é, and é日), so that it is found in every block and across their edges, and never where it only starts.
+    std::size_t search_wrong = 0;
+    constexpr std::array<std::string_view, 5> before{"a", "é", "日", "a", "é"};
+    for (std::size_t place = 0; place < 70; ++place) {
+        std::string prefix;
+        for (std::size_t i = 0; i < place; ++i) prefix += before[i % before.size()];
+        const std::string bytes = prefix + "é日\U0001F600" + std::string(20, 'b');
+        const auto text = Text::from(runtime_units<T>(bytes));
+        if (!text.has_value()) {
+            ++search_wrong;
+            continue;
+        }
+        const auto split = text->split_once("é日\U0001F600"_js);
+        if (!split || packed<T>(split->first) != prefix || packed<T>(split->second) != std::string(20, 'b')) ++search_wrong;
+        if (text->contains("é日\U0001F601"_js) || !text->contains("\U0001F600b"_js)) ++search_wrong;
+    }
+    check(search_wrong == 0, "searching long text, at every place, past near misses");
 
     // Positions past wide code points.
     const Text accented = "Thé is a test"_js;

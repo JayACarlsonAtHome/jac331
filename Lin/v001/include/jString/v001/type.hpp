@@ -13,7 +13,8 @@
 //          UTF16 and UTF32 are kept in this machine's byte order. Every Type compares in code point order on every
 //          machine: Ascii, UTF8Packed and UTF8Full as bytes, UTF32 as numbers, UTF16 by rank (see Utf16::rank).
 // Modified 2026-11-24 by Claude Opus 5.5: offset_of passes whole blocks counted wide before it walks; UTF-8 written
-//          straight from UTF16 and UTF32; decode_at gives UTF-8 the rest of the text.
+//          straight from UTF16 and UTF32; decode_at gives UTF-8 the rest of the text; find in UTF16 and UTF32 16
+//          units a step.
 #pragma once
 
 #include <algorithm>
@@ -224,16 +225,43 @@ template <Type T>
         }
         return std::nullopt;
     } else {
-        const auto all = view_of<T>(text);
-        const auto wanted = view_of<T>(part);
-        std::size_t at = from;
-        while (at <= all.size()) {
-            const std::size_t found = all.find(wanted, at);
-            if (found == units_view<T>::npos) return std::nullopt;
-            if (found % step == 0) return found;
-            at = found + 1;
+        if constexpr (T == Type::UTF16 || T == Type::UTF32) {
+            // string_view's find for char16_t and char32_t looks for the first unit one at a time (memchr is for
+            // bytes): here 16 at a time, with no branch, which compilers make wide, and a block without it is passed in
+            // one step. Only where the first unit is are the rest compared. A match starts with that unit, so none is
+            // passed over.
+            if (part.empty()) return from <= text.size() ? std::optional<std::size_t>{from} : std::nullopt;
+            if (from > text.size() || text.size() - from < part.size()) return std::nullopt;
+            const unit_of<T> first = part[0];
+            const std::size_t last = text.size() - part.size();
+            std::size_t at = from;
+            while (at <= last) {
+                if (text.size() - at >= block_units) {
+                    unsigned seen = 0;
+                    for (const auto unit : text.subspan(at).template first<block_units>()) seen |= unit == first ? 1U : 0U;
+                    if (seen == 0) {
+                        at += block_units;
+                        continue;
+                    }
+                }
+                const std::size_t stop = std::min(last + 1, at + block_units);
+                for (; at < stop; ++at) {
+                    if (text[at] == first && std::ranges::equal(text.subspan(at, part.size()), part)) return at;
+                }
+            }
+            return std::nullopt;
+        } else {
+            const auto all = view_of<T>(text);
+            const auto wanted = view_of<T>(part);
+            std::size_t at = from;
+            while (at <= all.size()) {
+                const std::size_t found = all.find(wanted, at);
+                if (found == units_view<T>::npos) return std::nullopt;
+                if (found % step == 0) return found;
+                at = found + 1;
+            }
+            return std::nullopt;
         }
-        return std::nullopt;
     }
 }
 
