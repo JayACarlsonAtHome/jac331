@@ -12,7 +12,8 @@
 //
 //          UTF16 and UTF32 are kept in this machine's byte order. Every Type compares in code point order on every
 //          machine: Ascii, UTF8Packed and UTF8Full as bytes, UTF32 as numbers, UTF16 by rank (see Utf16::rank).
-// Modified 2026-11-24 by Claude Opus 5.5: offset_of passes whole blocks counted wide before it walks.
+// Modified 2026-11-24 by Claude Opus 5.5: offset_of passes whole blocks counted wide before it walks; UTF-8 written
+//          straight from UTF16 and UTF32.
 #pragma once
 
 #include <algorithm>
@@ -248,6 +249,105 @@ template <Type T>
 
 // --- Converting valid kept text from one Type to another ---
 
+// --- UTF-8 out of UTF16 and UTF32, written directly: what files, terminals and C libraries take ---
+
+// Whether text kept as From goes to To by writing UTF-8 straight from its units.
+template <Type From, Type To>
+inline constexpr bool wide_to_utf8 = (From == Type::UTF16 || From == Type::UTF32) && To == Type::UTF8Packed;
+
+// Whether a block of units are all below U+0080: their values ORed together, one test, which compilers make wide.
+template <Type T>
+[[nodiscard]] constexpr bool block_is_ascii(std::span<const unit_of<T>, block_units> block) noexcept {
+    std::uint32_t any = 0;
+    for (const auto unit : block) any |= value_of(unit);
+    return any < 0x80U;
+}
+
+// How many UTF-8 bytes a unit of UTF16 or UTF32 takes: 1, and one more from each of U+0080, U+0800 and U+10000. A
+// UTF-16 surrogate is half of a code point of 4 bytes: 2. Each "from" is (limit - value) >> 31, which is 1 just when
+// the value is past the limit (no unit's value is near 2^31): arithmetic, not a comparison, because x86 compares
+// unsigned numbers wide only by a detour, and g++ at -O2 then leaves the sum of them narrow.
+template <Type From>
+[[nodiscard]] constexpr std::uint32_t utf8_bytes_of(unit_of<From> unit) noexcept {
+    const std::uint32_t value = value_of(unit);
+    std::uint32_t bytes = 1U + ((0x7FU - value) >> 31U) + ((0x7FFU - value) >> 31U);
+    if constexpr (From == Type::UTF32) {
+        bytes += (0xFFFFU - value) >> 31U;
+    } else {
+        bytes -= (((value & 0xF800U) ^ 0xD800U) - 1U) >> 31U;
+    }
+    return bytes;
+}
+
+// How many UTF-8 bytes text kept as UTF16 or UTF32 takes: summed a block at a time in 32 bits, over a fixed size,
+// which g++ makes wide at -O2 (one loop over the whole text it left narrow, at half the speed of walking it).
+template <Type From>
+[[nodiscard]] constexpr std::size_t utf8_size_from_wide(kept<From> text) noexcept {
+    std::size_t size = 0;
+    std::size_t at = 0;
+    for (; text.size() - at >= block_units; at += block_units) {
+        const auto block = text.subspan(at).template first<block_units>();
+        std::uint32_t bytes = 0;
+        for (const auto unit : block) bytes += utf8_bytes_of<From>(unit);
+        size += bytes;
+    }
+    for (; at < text.size(); ++at) size += utf8_bytes_of<From>(text[at]);
+    return size;
+}
+
+// Valid text kept as UTF16 or UTF32, written as UTF-8 into out, which holds exactly its size. A block of ASCII is
+// written in one step; anything else a code point at a time to the end of its block, each straight into out by its
+// size, with nothing decoded into or encoded out of a code point's array first.
+template <Type From>
+constexpr void write_utf8_from_wide(kept<From> text, std::span<char> out) noexcept {
+    std::size_t to = 0;
+    std::size_t at = 0;
+    while (at < text.size()) {
+        if (text.size() - at >= block_units && block_is_ascii<From>(text.subspan(at).template first<block_units>())) {
+            const auto from = text.subspan(at).template first<block_units>();
+            const auto into = out.subspan(to).template first<block_units>();
+            for (std::size_t i = 0; i < block_units; ++i) into[i] = static_cast<char>(value_of(from[i]));
+            at += block_units;
+            to += block_units;
+            continue;
+        }
+        const std::size_t stop = std::min(text.size(), at + block_units);
+        while (at < stop) {
+            std::uint32_t value = value_of(text[at]);
+            ++at;
+            if (value < 0x80U) {
+                out[to] = static_cast<char>(value);
+                to += 1;
+                continue;
+            }
+            if (value < 0x800U) {
+                out[to] = static_cast<char>(0xC0U | (value >> 6U));
+                out[to + 1] = static_cast<char>(0x80U | (value & 0x3FU));
+                to += 2;
+                continue;
+            }
+            if constexpr (From == Type::UTF16) {
+                if ((value & 0xFC00U) == 0xD800U) {
+                    value = 0x10000U + ((value - 0xD800U) << 10U) + (value_of(text[at]) - 0xDC00U);
+                    ++at;
+                }
+            }
+            if (value < 0x10000U) {
+                out[to] = static_cast<char>(0xE0U | (value >> 12U));
+                out[to + 1] = static_cast<char>(0x80U | ((value >> 6U) & 0x3FU));
+                out[to + 2] = static_cast<char>(0x80U | (value & 0x3FU));
+                to += 3;
+                continue;
+            }
+            out[to] = static_cast<char>(0xF0U | (value >> 18U));
+            out[to + 1] = static_cast<char>(0x80U | ((value >> 12U) & 0x3FU));
+            out[to + 2] = static_cast<char>(0x80U | ((value >> 6U) & 0x3FU));
+            out[to + 3] = static_cast<char>(0x80U | (value & 0x3FU));
+            to += 4;
+        }
+    }
+}
+
 // How many units text kept as From takes kept as To.
 template <Type From, Type To>
 [[nodiscard]] constexpr std::size_t converted_size(kept<From> text) noexcept {
@@ -257,6 +357,8 @@ template <Type From, Type To>
         return count_of<From>(text) * max_kept<To>;
     } else if constexpr (From == Type::UTF8Full && To == Type::UTF8Packed) {
         return packed_size<Utf8>(text);
+    } else if constexpr (wide_to_utf8<From, To>) {
+        return utf8_size_from_wide<From>(text);
     } else {
         // A code point below U+0080 is one unit out, as in convert() below.
         std::size_t size = 0;
@@ -277,6 +379,8 @@ constexpr void convert(kept<From> text, std::span<unit_of<To>> out) noexcept {
         spread<Utf8>(view_of<From>(text), out);
     } else if constexpr (From == Type::UTF8Full && (To == Type::Ascii || To == Type::UTF8Packed)) {
         pack<Utf8>(text, out);
+    } else if constexpr (wide_to_utf8<From, To>) {
+        write_utf8_from_wide<From>(text, out);
     } else {
         // A code point below U+0080 is one unit with that value in every Type but UTF8Full (whose cell's first byte
         // is that value): written as one unit of To, with nothing decoded or encoded. Most text is mostly these.

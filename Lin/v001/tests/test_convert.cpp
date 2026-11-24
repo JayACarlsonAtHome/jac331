@@ -1,9 +1,14 @@
 // File: tests/test_convert.cpp
 // Purpose: convert<To>() between every pair of Types, all 25: the text comes out the same code points, short and long
 //          (inside the String and on the heap), and back again. To Ascii, text above U+007F is refused with the first
-//          code point that does not fit, and convert_lossy<Type::Ascii>() makes each one '?'.
+//          code point that does not fit, and convert_lossy<Type::Ascii>() makes each one '?'. Every code point goes out
+//          of UTF16 and UTF32 as UTF-8, which is written straight from their units.
+// Modified 2026-11-24 by Claude Opus 5.5: every code point out of UTF16 and UTF32 as UTF-8.
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <expected>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -75,6 +80,38 @@ void from_each(jstr_test::Checker& check) {
     one_pair<From, Type::UTF32>(check);
 }
 
+// Every code point out of UTF16 or UTF32 as UTF-8, against the UTF-8 codec's own bytes: each by itself, and all of
+// them in one text (whose first 128 are ASCII, written a block at a time).
+template <Type From>
+void every_code_point_to_utf8(jstr_test::Checker& check) {
+    check.context(jstr_test::name_of(From));
+    using Codec = std::conditional_t<From == Type::UTF16, jString::Utf16, jString::Utf32>;
+    using Unit = typename Codec::unit;
+    std::basic_string<Unit> units;
+    std::string expected;
+    std::size_t alone_wrong = 0;
+    for (std::uint32_t c = 0; c <= 0x10FFFFU; ++c) {
+        if (c >= 0xD800U && c <= 0xDFFFU) continue;
+        std::array<Unit, Codec::max_units> one{};
+        const std::size_t one_size = Codec::encode(static_cast<char32_t>(c), one);
+        std::array<char, 4> bytes{};
+        const std::size_t byte_size = jString::Utf8::encode(static_cast<char32_t>(c), bytes);
+        const std::basic_string_view<Unit> one_units{one.data(), one_size};
+        const std::string_view one_bytes{bytes.data(), byte_size};
+        units += one_units;
+        expected += one_bytes;
+        const auto text = String<From>::from(one_units);
+        std::array<char, 4> out{};
+        if (!text || text->size_utf8() != byte_size || text->write_utf8(out) != std::optional<std::size_t>{byte_size} ||
+            std::string_view{out.data(), byte_size} != one_bytes) {
+            ++alone_wrong;
+        }
+    }
+    check(alone_wrong == 0, "every code point by itself, as UTF-8");
+    const auto all = String<From>::from(units);
+    check(all.has_value() && all->size_utf8() == expected.size() && packed<From>(*all) == expected, "every code point in one text, as UTF-8");
+}
+
 }  // namespace
 
 int main() {
@@ -84,6 +121,8 @@ int main() {
     from_each<Type::UTF8Full>(check);
     from_each<Type::UTF16>(check);
     from_each<Type::UTF32>(check);
+    every_code_point_to_utf8<Type::UTF16>(check);
+    every_code_point_to_utf8<Type::UTF32>(check);
 
     // The inside of a converted String: one chosen by name.
     check.context("");
