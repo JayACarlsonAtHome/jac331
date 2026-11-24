@@ -5,6 +5,7 @@
 //          code points for the four that hold them; then what is each Type's own (UTF8Full's cells, UTF16's pairs and
 //          order, UTF32's units, Ascii refusing what is not ASCII). test_convert.cpp converts between them.
 // Modified 2026-11-24 by Claude Opus 5.5: write_utf8 of every piece of mixed text, into room of every size near its own.
+// Modified 2026-11-24 by Claude Opus 5.5: every width across the edge of an offset_of block.
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -316,6 +317,14 @@ void unicode_types(jstr_test::Checker& check) {
     const std::string late_wide = std::string(100, 'a') + "\U0001F600" + std::string(100, 'a');
     check(wrong_answers<T>(Text::from(runtime_units<T>(cjk)).value()) == 0 && wrong_answers<T>(Text::from(runtime_units<T>(late_wide)).value()) == 0,
           "three-byte code points; one wide one after 100 ASCII");
+    // Every width across the edge of every block offset_of counts at once, by moving it along with 0 to 7 ASCII first.
+    std::size_t straddling_wrong = 0;
+    for (std::size_t shift = 0; shift < 8; ++shift) {
+        std::string moved(shift, 'a');
+        for (int i = 0; i < 30; ++i) moved += "é日\U0001F600z";
+        straddling_wrong += wrong_answers<T>(Text::from(runtime_units<T>(moved)).value());
+    }
+    check(straddling_wrong == 0, "every width across the edge of a block, at every position");
     check(packed<T>(Text::from_lossy(runtime_units<T>(late_wide))) == late_wide, "from_lossy of valid text is the text");
 
     String<T, 16> grown;

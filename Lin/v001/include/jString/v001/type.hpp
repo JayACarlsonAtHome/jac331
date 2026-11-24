@@ -12,6 +12,7 @@
 //
 //          UTF16 and UTF32 are kept in this machine's byte order. Every Type compares in code point order on every
 //          machine: Ascii, UTF8Packed and UTF8Full as bytes, UTF32 as numbers, UTF16 by rank (see Utf16::rank).
+// Modified 2026-11-24 by Claude Opus 5.5: offset_of passes whole blocks counted wide before it walks.
 #pragma once
 
 #include <algorithm>
@@ -116,24 +117,37 @@ template <Type T>
     return codec_of<T>::decode(text.subspan(at, length_at<T>(text, at)));
 }
 
+// How many units start a code point: a loop with no branch, which compilers make wide (and wider still over a fixed
+// size).
+template <Type T, std::size_t Size = std::dynamic_extent>
+[[nodiscard]] constexpr std::size_t starts_in(std::span<const unit_of<T>, Size> units) noexcept {
+    std::size_t count = 0;
+    for (const auto unit : units) count += codec_of<T>::starts_code_point(unit) ? 1U : 0U;
+    return count;
+}
+
 template <Type T>
 [[nodiscard]] constexpr std::size_t count_of(kept<T> text) noexcept {
     if constexpr (width_of<T> != 0) {
         return text.size() / width_of<T>;
     } else {
-        // Every unit that starts a code point: a loop with no branch, which compilers make wide.
-        std::size_t count = 0;
-        for (const auto unit : text) count += codec_of<T>::starts_code_point(unit) ? 1U : 0U;
-        return count;
+        return starts_in<T>(text);
     }
 }
+
+// The units offset_of counts at once in a Type that is walked: enough that the counting is wide, few enough that the
+// walk after it is short.
+inline constexpr std::size_t offset_block = 64;
 
 // No place: what offset_of gives when the text is too short. A plain number, not a std::optional, because it is on
 // the path of every at() and substring(): with -ftrivial-auto-var-init=zero (the hardening every build has), g++
 // writes each std::optional to the stack zeroed and reads it back, which made at() over 20 times slower.
 inline constexpr std::size_t nowhere = static_cast<std::size_t>(-1);
 
-// Where code point n starts (n may be the count: the end), in units, or nowhere when the text holds fewer.
+// Where code point n starts (n may be the count: the end), in units, or nowhere when the text holds fewer. In a Type
+// that is walked, whole blocks are passed over first, a block at a time, while the code points that start in a block
+// (counted as count_of counts, wide) are no more than those still to pass. A block may end inside a code point, so the
+// units that continue it are passed, and the rest, under a block, is walked a code point at a time.
 template <Type T>
 [[nodiscard]] constexpr std::size_t offset_of(kept<T> text, std::size_t n) noexcept {
     if constexpr (width_of<T> != 0) {
@@ -141,6 +155,15 @@ template <Type T>
         return n * width_of<T>;
     } else {
         std::size_t at = 0;
+        if (text.size() >= offset_block) {
+            while (text.size() - at >= offset_block) {
+                const std::size_t starts = starts_in<T>(text.subspan(at).template first<offset_block>());
+                if (starts > n) break;
+                n -= starts;
+                at += offset_block;
+            }
+            while (at < text.size() && !codec_of<T>::starts_code_point(text[at])) ++at;
+        }
         for (std::size_t i = 0; i < n; ++i) {
             if (at >= text.size()) return nowhere;
             at += codec_of<T>::length_of(text[at]);
