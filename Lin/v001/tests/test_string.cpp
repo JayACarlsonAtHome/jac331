@@ -4,6 +4,7 @@
 //          joining, printing and hashing. The checks that need only ASCII run for all five Types; the ones with wider
 //          code points for the four that hold them; then what is each Type's own (UTF8Full's cells, UTF16's pairs and
 //          order, UTF32's units, Ascii refusing what is not ASCII). test_convert.cpp converts between them.
+// Modified 2026-11-24 by Claude Opus 5.5: write_utf8 of every piece of mixed text, into room of every size near its own.
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -249,6 +250,36 @@ void unicode_types(jstr_test::Checker& check) {
     check(widths.write_utf8(room) == std::nullopt && room == std::array<char, 9>{}, "write_utf8 writes nothing into too little room");
     std::array<char, 12> enough{};
     check(widths.write_utf8(enough) == std::optional<std::size_t>{10} && std::string_view{enough.data(), 10} == packed<T>(widths), "and the bytes into enough");
+
+    // Every piece of text of every width, written into room of every size near its own: too little gets nothing, and
+    // enough gets the bytes and nothing past them (UTF8Full packs in one pass when the room holds all its cells).
+    const Text pieces_of = "aé€\U0001F600bé€\U0001F600c€"_js;
+    constexpr std::string_view pieces_utf8 = "a\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80" "b\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80" "c\xE2\x82\xAC";
+    constexpr std::array<std::size_t, 11> starts{0, 1, 3, 6, 10, 11, 13, 16, 20, 21, 24};
+    std::size_t wrong_writes = 0;
+    for (std::size_t from = 0; from < starts.size(); ++from) {
+        for (std::size_t count = 0; from + count < starts.size(); ++count) {
+            const std::string_view bytes = pieces_utf8.substr(starts[from], starts[from + count] - starts[from]);
+            const auto part = pieces_of.substring(CodePointIndex{from}, CodePointCount{count});
+            if (!part.has_value()) {
+                ++wrong_writes;
+                continue;
+            }
+            const std::size_t cells = 4 * count;
+            for (const std::size_t space : {std::size_t{40}, bytes.size() - (bytes.empty() ? 0U : 1U), bytes.size(), bytes.size() + 1, cells - (count == 0 ? 0U : 1U), cells}) {
+                std::array<char, 40> out{};
+                out.fill('#');
+                const auto written = part->write_utf8(std::span{out}.first(space));
+                const std::string_view all{out.data(), out.size()};
+                const bool right = space >= bytes.size()
+                                       ? written == std::optional<std::size_t>{bytes.size()} && all.substr(0, bytes.size()) == bytes &&
+                                             all.find_first_not_of('#', bytes.size()) == std::string_view::npos
+                                       : !written.has_value() && all.find_first_not_of('#') == std::string_view::npos;
+                if (!right) ++wrong_writes;
+            }
+        }
+    }
+    check(wrong_writes == 0, "write_utf8 of every piece, into room of every size near its own");
 
     check(Text::from(runtime_units<T>("\xE2\x82\xAC 5")).value() == "€ 5"_js, "from() takes valid units of every width");
     check(Text::from_lossy(runtime_units<T>("é")) == "é"_js, "and so does from_lossy");

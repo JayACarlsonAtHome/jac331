@@ -5,6 +5,7 @@
 //
 //          Cells are compared and searched as bytes, never loaded as numbers: a number's order depends on the machine's
 //          byte order, and the bytes' order is the order of the code points on every machine.
+// Modified 2026-11-24 by Claude Opus 5.5: pack() gives how many units it wrote and writes nothing past them.
 #pragma once
 
 #include <algorithm>
@@ -227,14 +228,16 @@ template <Encoding E>
     return size;
 }
 
-// Cells packed into out, which must hold packed_size(cells) units. 16 cells that each hold a code point that is whole
-// in one unit (in UTF-8, ASCII) are packed in one step; a block that is not all such cells is packed a cell at a time
-// to its end before the next block is tried. A cell is read into a local array, which nothing else can point into, so
-// compilers read and write it as one 4-byte value. While out has room for a whole cell after the place written to, the
-// whole cell is written and the place moves on by the code point's length, so the next cell writes over the zeros;
-// only the last few code points are written to their exact length.
+// Cells packed into out, which must hold at least packed_size(cells) units: how many units were written. Nothing past
+// them is written, so out may be bigger, and the size is found on the way (one pass, not packed_size and then this).
+// 16 cells that each hold a code point that is whole in one unit (in UTF-8, ASCII) are packed in one step; a block
+// that is not all such cells is packed a cell at a time to its end before the next block is tried. A cell is read
+// into a local array, which nothing else can point into, so compilers read and write it as one 4-byte value. While
+// cell_units - 1 more cells follow, the whole cell is written and the place moves on by the code point's length: the
+// cells after it write at least one unit each, over its zeros, and they fit, since out holds them all. Only the last
+// few code points are written to their exact length.
 template <Encoding E>
-constexpr void pack(std::span<const typename E::unit> cells, std::span<typename E::unit> out) noexcept {
+constexpr std::size_t pack(std::span<const typename E::unit> cells, std::span<typename E::unit> out) noexcept {
     constexpr std::size_t width = E::cell_units;
     std::size_t at = 0;
     std::size_t to = 0;
@@ -255,7 +258,7 @@ constexpr void pack(std::span<const typename E::unit> cells, std::span<typename 
             const auto from = cells.subspan(at).template first<width>();
             for (std::size_t k = 0; k < width; ++k) cell[k] = from[k];
             const std::size_t length = E::length_of(cell[0]);
-            if (out.size() - to >= width) {
+            if (cells.size() - at >= width * width) {
                 const auto whole = out.subspan(to).template first<width>();
                 for (std::size_t k = 0; k < width; ++k) whole[k] = cell[k];
             } else {
@@ -266,6 +269,7 @@ constexpr void pack(std::span<const typename E::unit> cells, std::span<typename 
             to += length;
         }
     }
+    return to;
 }
 
 // The bytes of cells, for comparing, searching and hashing them inside jString. Never handed to a caller: outside,

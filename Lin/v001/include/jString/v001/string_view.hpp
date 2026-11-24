@@ -9,6 +9,7 @@
 //          write_packed(), to_c_string()), or as UTF-8 whatever its Type (to_utf8(), write_utf8()). Text of one Type
 //          never meets text of another without being converted by name (convert<To>(), in string.hpp).
 // Modified 2026-11-23 by Claude Opus 5.5: [[clang::lifetimebound]] where clang++ 23 asks for it.
+// Modified 2026-11-24 by Claude Opus 5.5: write_utf8 from UTF8Full in one pass when the room is sure to be enough.
 #pragma once
 
 #include <algorithm>
@@ -306,6 +307,11 @@ private:
 
     template <Type To>
     [[nodiscard]] constexpr std::optional<std::size_t> write(std::span<detail::unit_of<To>> out) const noexcept {
+        if constexpr (T == Type::UTF8Full && To == Type::UTF8Packed) {
+            // Packed, a code point takes at most a cell's bytes: with room for all the cells, it fits, and is packed
+            // in one pass that finds its size on the way. With less room, its size is found first, as for any Type.
+            if (out.size() >= units_.size()) return detail::pack<Utf8>(units_, out);
+        }
         const std::size_t size = detail::converted_size<T, To>(units_);
         if (out.size() < size) return std::nullopt;
         detail::convert<T, To>(units_, out.first(size));
